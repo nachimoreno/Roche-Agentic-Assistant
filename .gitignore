@@ -5,3 +5,15 @@
 # Secrets
 .env
 .misc/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Local state
+data/app.db
+data/app.db-journal
+.chroma/

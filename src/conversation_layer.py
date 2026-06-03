@@ -2,236 +2,127 @@
 conversation_layer.py
 ---------------------
 Conversation Layer for the Roche Scientist Assistant pipeline.
-Uses Groq (free tier) with Llama 3 — no payment required.
-
-Get a free API key at: https://console.groq.com
 
 Responsibilities:
   - Detect the language of an incoming scientist message
   - Classify the message as "question" or "feedback"
   - Detect the dominant emotion when the message is feedback
 
+Output is a Pydantic `AnalysisResult` — the single source of truth for
+language / message-type / emotion across the rest of the system.
+
 Usage
 -----
-    export GROQ_API_KEY="gsk_..."          # set once in your terminal
-
+    from llm import GroqClient
     from conversation_layer import ConversationLayer
 
-    layer = ConversationLayer()
+    layer = ConversationLayer(llm=GroqClient(api_key=..., model=...))
     result = layer.analyze("How do I clean the centrifuge?")
-    print(result.to_json())
-    # {"language": "english", "type": "question"}
-
-    result = layer.analyze("This onboarding process is extremely frustrating.")
-    print(result.to_json())
-    # {"language": "english", "type": "feedback", "emotion": "frustrated"}
+    print(result.model_dump())
 """
 
 from __future__ import annotations
 
-import json
-import os
-from dataclasses import dataclass
-from typing import Optional
+import logging
+from typing import Literal, Optional
 
-from groq import Groq
-from dotenv import load_dotenv
+from pydantic import BaseModel
 
-load_dotenv()
+from llm import LLMClient
 
-API_KEY = os.environ.get("GROQ_API_KEY")
 
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Constants
+# Schema — single source of truth for downstream consumers
 # ---------------------------------------------------------------------------
 
-MODEL = "llama-3.3-70b-versatile"   # Free on Groq — fast and accurate
-MAX_TOKENS = 256                      # Classification output is always short
+Language = Literal[
+    "english",
+    "german",
+    "french",
+    "italian",
+    "spanish",
+    "other",
+]
+
+MessageType = Literal["question", "feedback"]
+
+Emotion = Literal[
+    "frustrated",
+    "confused",
+    "satisfied",
+    "annoyed",
+    "angry",
+    "disappointed",
+    "pleased",
+    "overwhelmed",
+    "concerned",
+    "anxious",
+    "happy",
+    "neutral",
+    "skeptical",
+    "uncertain",
+    "impressed",
+    "stressed",
+    "irritated",
+    "appreciative",
+]
+
+
+class AnalysisResult(BaseModel):
+    language: Language
+    type: MessageType
+    emotion: Optional[Emotion] = None
+
+
+# ---------------------------------------------------------------------------
+# System prompt
+# ---------------------------------------------------------------------------
 
 _SYSTEM_PROMPT = """\
-You are part of an enterprise conversational AI pipeline for a scientific assistant system used by Roche scientists.
+You are part of an enterprise conversational AI pipeline for a scientific
+assistant system used by Roche scientists.
 
-Your role is NOT to behave like a chatbot assistant.
-
-Your role is to behave as a structured conversational analysis engine inside a larger AI architecture.
-
----
-
-## SYSTEM CONTEXT
-
-The architecture works as follows:
-
-1. A scientist sends a message through a conversational interface.
-2. The message is forwarded through an API call to an LLM-based conversation layer.
-3. Your responsibility inside this layer is ONLY to:
-   * detect the message language
-   * classify the message type
-   * detect emotion when applicable
-
-4. Your JSON response will be consumed programmatically by downstream services, including:
-   * routing systems
-   * feedback pipelines
-   * analytics dashboards
-   * orchestration layers
-   * future standalone models
-
-5. Your output must therefore be:
-   * deterministic
-   * machine-readable
-   * strictly structured
-   * consistent across calls
-
-6. You are NOT responsible for:
-   * answering the user's question
-   * generating conversational replies
-   * giving explanations
-   * adding commentary
-   * performing reasoning outside classification
-
-You are ONLY responsible for conversational analysis and structured output generation.
-
----
-
-## OBJECTIVES
+Your role is NOT to behave like a chatbot. Your role is to behave as a
+structured conversational analysis engine inside a larger AI architecture.
 
 For every incoming user message, you must:
 
-1. Detect the language of the message.
-2. Classify the message type:
-   * "question"
-   * "feedback"
-3. If the type is "feedback":
-   * Detect the primary emotion/sentiment expressed.
-
----
-
-## PIPELINE LOGIC
-
-STEP 1: Analyze the user message.
-STEP 2: Detect the primary language.
-STEP 3: Classify whether the message is a question OR feedback.
-STEP 4: If "feedback" — detect the dominant emotion.
-STEP 5: Return a STRICT JSON response.
-
----
+1. Detect the primary language of the message.
+2. Classify the message as "question" or "feedback".
+3. If the type is "feedback", detect the dominant emotion.
 
 ## MESSAGE TYPE CLASSIFICATION
 
-A message is a "question" if the user:
-* asks for information
-* requests guidance
-* asks where or how to do something
-* asks operational or scientific questions
-* seeks clarification
+A message is a "question" if the user asks for information, requests
+guidance, asks where or how to do something, asks operational or
+scientific questions, or seeks clarification.
 
-A message is "feedback" if the user:
-* expresses an opinion
-* reports frustration or confusion
-* comments on a tool, process, workflow, or document
-* praises or criticizes something
-* suggests improvements
-* reports usability issues
-* expresses emotions regarding an experience
+A message is "feedback" if the user expresses an opinion, reports
+frustration or confusion, comments on a tool / process / workflow /
+document, praises or criticizes something, suggests improvements,
+reports usability issues, or expresses emotions about an experience.
 
----
+If uncertain between "question" and "feedback", classify as "feedback"
+only if emotional or opinionated language is present.
 
 ## EMOTION DETECTION
 
-ONLY perform emotion detection when "type" = "feedback".
-
-The emotion label must be:
-* concise
-* lowercase
-* a single dominant emotional state
-
-Valid examples: frustrated, confused, satisfied, annoyed, angry, disappointed,
-pleased, overwhelmed, concerned, anxious, happy, neutral, skeptical, uncertain,
-impressed, stressed, irritated, appreciative.
-
-If the emotional signal is weak or unclear, use: "neutral"
-
----
+Only perform emotion detection when type = "feedback".
+Use a single dominant emotion from the allowed list. If the signal is
+weak or unclear, use "neutral".
 
 ## LANGUAGE DETECTION
 
-Return the FULL language name in lowercase.
-Examples: english, german, french, italian, spanish.
-If another language appears, return its full lowercase name.
+Return the full language name in lowercase: english, german, french,
+italian, spanish, or "other" if none of the above.
 
----
+## OUTPUT
 
-## OUTPUT FORMAT
-
-Return ONLY valid JSON. No markdown, no comments, no extra fields.
-
-If type = "question":
-{"language": "<full_language_name>", "type": "question"}
-
-If type = "feedback":
-{"language": "<full_language_name>", "type": "feedback", "emotion": "<detected_emotion>"}
-
----
-
-## IMPORTANT CONSTRAINTS
-
-* Output must always be deterministic.
-* Never invent fields.
-* Never return null values.
-* Never explain reasoning.
-* Never output text outside JSON.
-* Use lowercase labels only.
-* If uncertain between "question" and "feedback":
-  classify as "feedback" only if emotional or opinionated language is present.
-* If emotion is unclear: use "neutral"
-
----
-
-## EXAMPLES
-
-Input: "How do I clean the centrifuge?"
-Output: {"language": "english", "type": "question"}
-
-Input: "This documentation is extremely confusing."
-Output: {"language": "english", "type": "feedback", "emotion": "confused"}
-
-Input: "Me gusta mucho el nuevo sistema."
-Output: {"language": "spanish", "type": "feedback", "emotion": "satisfied"}
-
-Input: "Das System funktioniert hervorragend."
-Output: {"language": "german", "type": "feedback", "emotion": "pleased"}
-
-Input: "Je ne comprends pas cette procédure."
-Output: {"language": "french", "type": "feedback", "emotion": "confused"}
-
-Input: "This process is stressing me out."
-Output: {"language": "english", "type": "feedback", "emotion": "stressed"}
+Return ONLY a JSON object. No prose, no markdown.
 """
-
-
-# ---------------------------------------------------------------------------
-# Data model
-# ---------------------------------------------------------------------------
-
-@dataclass
-class AnalysisResult:
-    """Structured result produced by the conversation layer for one message."""
-
-    language: str
-    type: str                       # "question" | "feedback"
-    emotion: Optional[str] = None   # present only when type == "feedback"
-
-    def to_dict(self) -> dict:
-        """Return the pipeline-ready JSON payload."""
-        payload = {"language": self.language, "type": self.type}
-        if self.emotion is not None:
-            payload["emotion"] = self.emotion
-        return payload
-
-    def to_json(self, **kwargs) -> str:
-        """Serialize to JSON string ready for downstream consumption."""
-        return json.dumps(self.to_dict(), ensure_ascii=False, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -239,134 +130,60 @@ class AnalysisResult:
 # ---------------------------------------------------------------------------
 
 class ConversationLayer:
-    """
-    Stateless conversation analysis engine for the Roche Scientist Assistant.
+    """Stateless conversation analysis engine.
 
-    Uses Groq's free API with Llama 3.3 70B.
-    Get a free key at: https://console.groq.com
-
-    Parameters
-    ----------
-    api_key : str, optional
-        Groq API key. Falls back to the GROQ_API_KEY environment variable.
-    model : str
-        Groq model to use. Defaults to llama-3.3-70b-versatile (free tier).
-    max_tokens : int
-        Maximum tokens for the model response.
+    The LLM provider is injected via the `LLMClient` interface — this class
+    has no knowledge of Groq, Anthropic, or any specific vendor.
     """
 
-    def __init__(
-        self,
-        api_key: Optional[str] = None,
-        model: str = MODEL,
-        max_tokens: int = MAX_TOKENS,
-    ) -> None:
-        self.model = model
-        self.max_tokens = max_tokens
-        self._client = Groq(
-            api_key=api_key or os.environ.get("GROQ_API_KEY")
-        )
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+    def __init__(self, llm: LLMClient, max_tokens: int = 256) -> None:
+        self._llm = llm
+        self._max_tokens = max_tokens
 
     def analyze(self, message: str) -> AnalysisResult:
-        """
-        Classify a scientist message.
-
-        Parameters
-        ----------
-        message : str
-            Raw text sent by the scientist.
-
-        Returns
-        -------
-        AnalysisResult
-            Typed result with language, type, and optional emotion.
-
-        Raises
-        ------
-        ValueError
-            If the model returns unparseable or schema-invalid output.
-        groq.APIError
-            Propagated on any non-recoverable API error.
-        """
-        response = self._client.chat.completions.create(
-            model=self.model,
-            max_tokens=self.max_tokens,
-            temperature=0,          # deterministic output
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user",   "content": message},
-            ],
+        payload = self._llm.complete_structured(
+            system=_SYSTEM_PROMPT,
+            user=message,
+            schema=AnalysisResult.model_json_schema(),
+            temperature=0.0,
+            max_tokens=self._max_tokens,
         )
-
-        raw_text = (response.choices[0].message.content or "").strip()
-
-        payload = self._parse(raw_text)
-        self._validate(payload)
-
-        return AnalysisResult(
-            language=payload["language"],
-            type=payload["type"],
-            emotion=payload.get("emotion"),
+        result = AnalysisResult.model_validate(payload)
+        logger.info(
+            "classification.done",
+            extra={
+                "language": result.language,
+                "type": result.type,
+                "emotion": result.emotion,
+            },
         )
-
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
-
-    def _parse(self, raw_text: str) -> dict:
-        """Parse model output as JSON, tolerating accidental markdown fences."""
-        text = raw_text
-        if text.startswith("```"):
-            lines = text.splitlines()
-            inner = []
-            for line in lines[1:]:
-                if line.strip() == "```":
-                    break
-                inner.append(line)
-            text = "\n".join(inner)
-
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError as exc:
-            raise ValueError(
-                f"ConversationLayer received non-JSON output.\n"
-                f"Raw: {raw_text!r}\n"
-                f"Error: {exc}"
-            ) from exc
-
-    def _validate(self, payload: dict) -> None:
-        """Raise ValueError if required fields are absent or values are invalid."""
-        missing = [f for f in ("language", "type") if f not in payload]
-        if missing:
-            raise ValueError(
-                f"ConversationLayer: missing required fields {missing} — got {payload}"
-            )
-        if payload["type"] not in ("question", "feedback"):
-            raise ValueError(
-                f"ConversationLayer: invalid type {payload['type']!r}; "
-                "expected 'question' or 'feedback'"
-            )
-        if payload["type"] == "feedback" and "emotion" not in payload:
-            raise ValueError(
-                f"ConversationLayer: 'emotion' missing for feedback message — got {payload}"
-            )
+        return result
 
 
 # ---------------------------------------------------------------------------
-# CLI smoke-test  (python conversation_layer.py)
+# CLI smoke-test  (python -m conversation_layer)
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     import sys
 
-    layer = ConversationLayer(API_KEY)
-    print(f"Roche Scientist Assistant - Conversation Layer")
-    print(f"Model : {layer.model}")
-    print(f"Type your message and press Enter. Type 'exit' to quit.")
+    from dotenv import load_dotenv
+
+    from logging_setup import setup_logging
+    from llm import GroqClient
+    from settings import Settings
+
+    load_dotenv()
+    settings = Settings()
+    setup_logging(level=settings.log_level, fmt=settings.log_format)
+
+    layer = ConversationLayer(
+        llm=GroqClient(api_key=settings.groq_api_key, model=settings.model_name),
+    )
+
+    print(f"Roche Scientist Assistant — Conversation Layer")
+    print(f"Model : {settings.model_name}")
+    print(f"Type a message and press Enter. Type 'exit' to quit.")
     print("-" * 70)
 
     while True:
@@ -375,16 +192,14 @@ if __name__ == "__main__":
         except (EOFError, KeyboardInterrupt):
             print("\nGoodbye.")
             break
-
         if not msg:
             continue
         if msg.lower() == "exit":
             print("Goodbye.")
             break
-
         try:
             r = layer.analyze(msg)
-            print(f"OUT : {r.to_json()}")
-        except ValueError as exc:
+            print(f"OUT : {r.model_dump_json()}")
+        except Exception as exc:
             print(f"ERR : {exc}", file=sys.stderr)
         print("-" * 70)
