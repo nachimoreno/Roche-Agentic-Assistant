@@ -20,7 +20,7 @@ from agent import RAGAgent
 from conversation_layer import ConversationLayer
 from db import create_all, make_engine, new_id
 from document_source import LocalMarkdownSource
-from embeddings import SentenceTransformersProvider
+from embeddings import FastEmbedProvider
 from llm import GroqClient, LLMClient
 from orchestrator import Assistant
 from repositories import FeedbackRepository, SessionRepository
@@ -48,7 +48,7 @@ def engine():
 @pytest.fixture(scope="module")
 def doc_store(tmp_path_factory):
     tmp = tmp_path_factory.mktemp("chroma_orch")
-    embedder = SentenceTransformersProvider()
+    embedder = FastEmbedProvider()
     store = ChromaVectorStore(path=str(tmp), collection_name="test_orchestrator")
     docs = DocumentStore(
         source=LocalMarkdownSource(DOCS_PATH),

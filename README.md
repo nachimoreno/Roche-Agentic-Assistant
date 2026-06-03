@@ -51,7 +51,7 @@ Framework-light by design — every external dependency sits behind a small `Pro
 | Layer | Default impl | Interface (swap point) |
 |---|---|---|
 | LLM | Groq (Llama 3.3 70B, free tier) | `LLMClient` in [src/llm.py](src/llm.py) |
-| Embeddings | `sentence-transformers` (multilingual, local) | `EmbeddingProvider` in [src/embeddings.py](src/embeddings.py) |
+| Embeddings | `fastembed` (multilingual, local, ONNX — no PyTorch) | `EmbeddingProvider` in [src/embeddings.py](src/embeddings.py) |
 | Vector store | ChromaDB (persistent, local) | `VectorStore` in [src/vector_store.py](src/vector_store.py) |
 | Documents | Local markdown corpus | `DocumentSource` in [src/document_source.py](src/document_source.py) |
 | Persistence | SQLite via SQLModel | `DATABASE_URL` env var → swap to PostgreSQL |
@@ -70,7 +70,7 @@ src/
   settings.py                 # typed Settings (pydantic-settings)
   logging_setup.py            # structured logging + correlation IDs
   llm.py                      # LLMClient + GroqClient
-  embeddings.py               # EmbeddingProvider + SentenceTransformersProvider
+  embeddings.py               # EmbeddingProvider + FastEmbedProvider
   vector_store.py             # VectorStore + ChromaVectorStore
   document_source.py          # DocumentSource + LocalMarkdownSource
   conversation_layer.py       # language + question/feedback + emotion

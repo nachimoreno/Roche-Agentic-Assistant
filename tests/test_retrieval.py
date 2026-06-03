@@ -2,7 +2,7 @@
 Retrieval tests.
 
 Ingests the real `data/docs/` through the production stack
-(LocalMarkdownSource -> SentenceTransformersProvider -> ChromaVectorStore)
+(LocalMarkdownSource -> FastEmbedProvider -> ChromaVectorStore)
 into a temp directory, then asserts semantic queries return the expected
 source documents. No API calls — runs entirely on CPU.
 """
@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from document_source import LocalMarkdownSource
-from embeddings import SentenceTransformersProvider
+from embeddings import FastEmbedProvider
 from retrieval import DocumentStore
 from vector_store import ChromaVectorStore
 
@@ -26,7 +26,7 @@ DOCS_PATH = REPO_ROOT / "data" / "docs"
 @pytest.fixture(scope="module")
 def document_store(tmp_path_factory):
     tmp = tmp_path_factory.mktemp("chroma")
-    embedder = SentenceTransformersProvider()
+    embedder = FastEmbedProvider()
     store = ChromaVectorStore(
         path=str(tmp), collection_name="test_retrieval"
     )

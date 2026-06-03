@@ -10,7 +10,7 @@ reads `os.environ` directly.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -35,9 +35,12 @@ class Settings(BaseSettings):
     # ---- Retrieval ----------------------------------------------------
     chroma_path: str = ".chroma"
     docs_path: str = "data/docs"
-    embedding_model: str = "paraphrase-multilingual-MiniLM-L12-v2"
+    embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     top_k: int = 4
 
     # ---- Observability ------------------------------------------------
     log_level: str = "INFO"
     log_format: Literal["json", "text"] = "text"
+    # If set, logs are written to this file and the console stays clean.
+    # If unset, logs go to stderr (handy for development).
+    log_file: Optional[str] = "logs/app.log"

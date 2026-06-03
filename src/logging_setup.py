@@ -17,11 +17,54 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
+import warnings
 from contextvars import ContextVar
+from pathlib import Path
 from uuid import UUID
 
 from uuid_utils import uuid7
+
+
+# Suppress known-benign UserWarnings before any consumer imports run.
+# - fastembed: informational pooling-change notice; queries and documents
+#   both use the new pooling, so retrieval ordering is unaffected.
+# - huggingface_hub: confirms it is honouring our progress-bar env var.
+warnings.filterwarnings(
+    "ignore",
+    message=r".*now uses mean pooling instead of CLS embedding.*",
+    category=UserWarning,
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r".*Cannot enable progress bars.*",
+    category=UserWarning,
+)
+
+
+# Libraries that log at INFO/DEBUG and clutter the console. We always
+# clamp them to WARNING so the demo stays clean.
+_NOISY_LOGGERS = (
+    "chromadb",
+    "chromadb.telemetry",
+    "httpx",
+    "httpcore",
+    "urllib3",
+    "huggingface_hub",
+    "fastembed",
+    "sentence_transformers",
+    "posthog",
+    "asyncio",
+)
+
+
+# fastembed and huggingface_hub emit tqdm progress bars directly to
+# stderr on first model download. Suppress them globally before either
+# is imported.
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("FASTEMBED_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("TQDM_DISABLE", "1")
 
 
 _correlation_id: ContextVar[str] = ContextVar("correlation_id", default="-")
@@ -86,7 +129,11 @@ class _TextFormatter(logging.Formatter):
         return base
 
 
-def setup_logging(level: str = "INFO", fmt: str = "text") -> None:
+def setup_logging(
+    level: str = "INFO",
+    fmt: str = "text",
+    log_file: str | Path | None = None,
+) -> None:
     """Configure root logging exactly once.
 
     Parameters
@@ -95,14 +142,28 @@ def setup_logging(level: str = "INFO", fmt: str = "text") -> None:
         Standard logging level name (DEBUG, INFO, WARNING, ERROR).
     fmt : str
         "json" for production (machine-readable) or "text" for local dev.
+    log_file : str | Path | None
+        If set, logs are written to this file and the console stays
+        clean. If unset, logs go to stderr (handy for development).
     """
     root = logging.getLogger()
-    for handler in list(root.handlers):
-        root.removeHandler(handler)
+    for h in list(root.handlers):
+        root.removeHandler(h)
 
-    handler = logging.StreamHandler(sys.stderr)
+    handler: logging.Handler
+    if log_file is not None:
+        path = Path(log_file)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        handler = logging.FileHandler(path, encoding="utf-8")
+    else:
+        handler = logging.StreamHandler(sys.stderr)
+
     handler.addFilter(_CorrelationFilter())
     handler.setFormatter(_JsonFormatter() if fmt == "json" else _TextFormatter())
 
     root.addHandler(handler)
     root.setLevel(level.upper())
+
+    # Always tame third-party loggers so they don't leak to stderr.
+    for name in _NOISY_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)

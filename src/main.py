@@ -19,7 +19,7 @@ from agent import RAGAgent
 from conversation_layer import ConversationLayer
 from db import create_all, make_engine, new_id
 from document_source import LocalMarkdownSource
-from embeddings import SentenceTransformersProvider
+from embeddings import FastEmbedProvider
 from llm import GroqClient
 from logging_setup import setup_logging
 from orchestrator import Assistant
@@ -42,7 +42,7 @@ def build_assistant(settings: Settings) -> Assistant:
     create_all(engine)
 
     llm = GroqClient(api_key=settings.groq_api_key, model=settings.model_name)
-    embedder = SentenceTransformersProvider(model_name=settings.embedding_model)
+    embedder = FastEmbedProvider(model_name=settings.embedding_model)
     vector_store = ChromaVectorStore(
         path=settings.chroma_path,
         collection_name=f"roche_{embedder.name.replace('/', '_')}",
@@ -92,7 +92,11 @@ def _print_response(resp) -> None:
 def main() -> int:
     load_dotenv()
     settings = Settings()
-    setup_logging(level=settings.log_level, fmt=settings.log_format)
+    setup_logging(
+        level=settings.log_level,
+        fmt=settings.log_format,
+        log_file=settings.log_file,
+    )
 
     assistant = build_assistant(settings)
     session_id = new_id()
