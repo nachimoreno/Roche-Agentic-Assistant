@@ -202,6 +202,29 @@ def test_live_german_question(live_assistant):
 
 
 @pytest.mark.live
+def test_live_agent_describes_its_capabilities(live_assistant):
+    assistant, _, _ = live_assistant
+    sid = new_id()
+    resp = assistant.handle(sid, "What can you do?")
+    assert resp.analysis.type == "question"
+    text = resp.text.lower()
+    # The answer should mention at least a couple of real capabilities.
+    hits = sum(
+        keyword in text
+        for keyword in (
+            "feedback",
+            "instrument",
+            "stock",
+            "cleaning",
+            "incident",
+            "onboard",
+            "language",
+        )
+    )
+    assert hits >= 2, f"capability answer mentioned too few features: {resp.text!r}"
+
+
+@pytest.mark.live
 def test_live_english_feedback_is_persisted(live_assistant):
     assistant, _, feedback_repo = live_assistant
     sid = new_id()
