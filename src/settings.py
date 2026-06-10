@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     google_service_account_json: Optional[str] = None
     google_oauth_credentials: Optional[str] = None
 
+    # ---- HTTP server -----------------------------------------------
+    host: str = "127.0.0.1"
+    port: int = 8000
+
     # ---- Observability ------------------------------------------------
     log_level: str = "INFO"
     log_format: Literal["json", "text"] = "text"
