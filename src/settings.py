@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     top_k: int = 4
 
+    # ---- HTTP server -----------------------------------------------
+    host: str = "127.0.0.1"
+    port: int = 8000
+
     # ---- Observability ------------------------------------------------
     log_level: str = "INFO"
     log_format: Literal["json", "text"] = "text"
