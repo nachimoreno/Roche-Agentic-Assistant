@@ -209,6 +209,27 @@ def test_stream_question_emits_meta_tokens_done_and_persists(fake_assistant):
     assert turns[-1].content == full
 
 
+def test_handle_stamps_user_id_and_sets_title(fake_assistant):
+    assistant, sessions, _ = fake_assistant
+    sid = new_id()
+    assistant.handle(sid, "How do I clean the centrifuge?", user_id="user-1")
+
+    session = sessions.get(sid)
+    assert session.user_id == "user-1"
+    assert session.title == "How do I clean the centrifuge?"
+    # The session shows up in that user's list, not another's.
+    assert [s.id for s in sessions.list_sessions("user-1")] == [sid]
+    assert sessions.list_sessions("user-2") == []
+
+
+def test_title_set_once_from_first_message(fake_assistant):
+    assistant, sessions, _ = fake_assistant
+    sid = new_id()
+    assistant.handle(sid, "First question about cleaning?", user_id="u")
+    assistant.handle(sid, "A second, different question?", user_id="u")
+    assert sessions.get(sid).title == "First question about cleaning?"
+
+
 def test_stream_feedback_acks_and_persists_feedback(fake_assistant):
     assistant, sessions, feedback_repo = fake_assistant
     sid = new_id()

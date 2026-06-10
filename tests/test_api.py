@@ -25,8 +25,15 @@ from fastapi.testclient import TestClient
 
 import api
 from agent import Citation
+from auth import get_current_user
 from conversation_layer import AnalysisResult
+from db import User, create_all, make_engine
 from orchestrator import Response, StreamDone, StreamMeta, StreamToken
+from repositories import SessionRepository, UserRepository
+
+# A fixed authenticated user for the HTTP-surface tests (auth is overridden,
+# not exercised here — see test_auth.py / test_sessions.py for the real flow).
+_FAKE_USER = User(email="tester@roche.com", password_hash="x", display_name="Tester")
 
 
 # ---------------------------------------------------------------------------
@@ -65,9 +72,21 @@ def _feedback_response() -> Response:
 
 
 @pytest.fixture
-def client():
-    """TestClient with no lifespan run; assistant injected per test."""
-    return TestClient(api.app)
+def client(tmp_path):
+    """TestClient with no lifespan run.
+
+    Real Session/User repos (temp file DB) back the ownership checks, auth is
+    overridden to a fixed user, and the assistant is injected per test.
+    """
+    engine = make_engine(f"sqlite:///{tmp_path}/api.db")
+    create_all(engine)
+    api.app.state.sessions = SessionRepository(engine)
+    api.app.state.users = UserRepository(engine)
+    api.app.dependency_overrides[get_current_user] = lambda: _FAKE_USER
+    try:
+        yield TestClient(api.app)
+    finally:
+        api.app.dependency_overrides.clear()
 
 
 def _inject(assistant) -> None:
@@ -83,12 +102,12 @@ def test_create_session_returns_valid_uuid(client):
     assert resp.status_code == 201
     body = resp.json()
     # Should parse as a UUID — i.e. a real id, not an empty string.
-    UUID(body["session_id"])
+    UUID(body["id"])
 
 
 def test_create_session_ids_are_unique(client):
-    a = client.post("/api/sessions").json()["session_id"]
-    b = client.post("/api/sessions").json()["session_id"]
+    a = client.post("/api/sessions").json()["id"]
+    b = client.post("/api/sessions").json()["id"]
     assert a != b
 
 

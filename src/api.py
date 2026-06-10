@@ -35,12 +35,12 @@ from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
 
 from auth import get_current_user, hash_password, verify_password
-from db import User, new_id
+from db import User
 from llm import LLMAuthError
 from logging_setup import setup_logging
 from main import build_assistant, build_engine
 from orchestrator import Assistant, StreamDone, StreamMeta, StreamToken
-from repositories import EmailTakenError, UserRepository
+from repositories import EmailTakenError, SessionRepository, UserRepository
 from settings import Settings
 
 load_dotenv()
@@ -58,6 +58,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     engine = build_engine(_settings)
     app.state.users = UserRepository(engine)
+    app.state.sessions = SessionRepository(engine)
     try:
         app.state.assistant = build_assistant(_settings, engine=engine)
     except LLMAuthError:
@@ -108,8 +109,25 @@ class ChatResponse(BaseModel):
     citations: list[CitationOut]
 
 
-class SessionOut(BaseModel):
-    session_id: str
+class SessionItemOut(BaseModel):
+    id: str
+    title: Optional[str] = None
+    created_at: str
+
+
+class CreateSessionRequest(BaseModel):
+    title: Optional[str] = None
+
+
+class RenameSessionRequest(BaseModel):
+    title: str
+
+
+class MessageOut(BaseModel):
+    role: str
+    content: str
+    language: Optional[str] = None
+    created_at: str
 
 
 class RegisterRequest(BaseModel):
@@ -189,26 +207,109 @@ def me(user: User = Depends(get_current_user)):
 
 
 # ---------------------------------------------------------------------------
-# Endpoints
+# Session helpers
 # ---------------------------------------------------------------------------
 
-@app.post("/api/sessions", response_model=SessionOut, status_code=201)
-def create_session():
-    """Create a new conversation session and return its ID."""
-    return SessionOut(session_id=str(new_id()))
-
-
-@app.post("/api/sessions/{session_id}/chat", response_model=ChatResponse)
-def chat(session_id: str, req: ChatRequest, request: Request):
-    """Send a message in a session and receive the assistant's reply."""
+def _parse_sid(session_id: str) -> UUID:
     try:
-        sid = UUID(session_id)
+        return UUID(session_id)
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid session_id format")
 
+
+def _session_item(s) -> SessionItemOut:
+    return SessionItemOut(id=str(s.id), title=s.title, created_at=s.created_at.isoformat())
+
+
+def _require_owned(request: Request, sid: UUID, user: User):
+    """Return the user's session or 404 (404, not 403, to avoid leaking ids)."""
+    s = request.app.state.sessions.get(sid)
+    if s is None or s.user_id != str(user.id):
+        raise HTTPException(status_code=404, detail="Session not found")
+    return s
+
+
+def _check_access(request: Request, sid: UUID, user: User) -> None:
+    """Allow a new (nonexistent) session, but reject another user's session."""
+    s = request.app.state.sessions.get(sid)
+    if s is not None and s.user_id != str(user.id):
+        raise HTTPException(status_code=404, detail="Session not found")
+
+
+# ---------------------------------------------------------------------------
+# Session endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/api/sessions", response_model=list[SessionItemOut])
+def list_sessions(request: Request, user: User = Depends(get_current_user)):
+    return [_session_item(s) for s in request.app.state.sessions.list_sessions(str(user.id))]
+
+
+@app.post("/api/sessions", response_model=SessionItemOut, status_code=201)
+def create_session(
+    request: Request,
+    body: Optional[CreateSessionRequest] = None,
+    user: User = Depends(get_current_user),
+):
+    s = request.app.state.sessions.create(
+        user_id=str(user.id), title=(body.title if body else None)
+    )
+    return _session_item(s)
+
+
+@app.get("/api/sessions/{session_id}/messages", response_model=list[MessageOut])
+def get_messages(session_id: str, request: Request, user: User = Depends(get_current_user)):
+    sid = _parse_sid(session_id)
+    _require_owned(request, sid, user)
+    return [
+        MessageOut(
+            role=t.role,
+            content=t.content,
+            language=t.language,
+            created_at=t.created_at.isoformat(),
+        )
+        for t in request.app.state.sessions.messages(sid)
+    ]
+
+
+@app.patch("/api/sessions/{session_id}", response_model=SessionItemOut)
+def rename_session(
+    session_id: str,
+    body: RenameSessionRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    sid = _parse_sid(session_id)
+    _require_owned(request, sid, user)
+    request.app.state.sessions.rename(sid, body.title)
+    return _session_item(request.app.state.sessions.get(sid))
+
+
+@app.delete("/api/sessions/{session_id}", status_code=204)
+def delete_session(session_id: str, request: Request, user: User = Depends(get_current_user)):
+    sid = _parse_sid(session_id)
+    _require_owned(request, sid, user)
+    request.app.state.sessions.soft_delete_session(sid)
+
+
+# ---------------------------------------------------------------------------
+# Chat endpoints
+# ---------------------------------------------------------------------------
+
+@app.post("/api/sessions/{session_id}/chat", response_model=ChatResponse)
+def chat(
+    session_id: str,
+    req: ChatRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    """Send a message in a session and receive the assistant's reply."""
+    sid = _parse_sid(session_id)
+    _check_access(request, sid, user)
+
     assistant: Assistant = request.app.state.assistant
     try:
-        resp = assistant.handle(sid, req.message)
+        resp = assistant.handle(sid, req.message, user_id=str(user.id))
     except Exception:
         # Log the detail server-side; don't leak internals to the client.
         logger.exception("api.chat.failed", extra={"session_id": str(sid)})
@@ -249,23 +350,28 @@ def _error_category(exc: Exception) -> tuple[str, str]:
 
 
 @app.post("/api/sessions/{session_id}/chat/stream")
-def chat_stream(session_id: str, req: ChatRequest, request: Request):
+def chat_stream(
+    session_id: str,
+    req: ChatRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
     """Same as /chat, but streams the reply token-by-token over SSE.
 
     Event sequence: `meta` (language/type/emotion) -> `token`* (text deltas)
     -> `done` (citations). On failure an `error` event is emitted instead of
-    leaking the exception.
+    leaking the exception. Auth + ownership are checked before streaming starts
+    so they surface as real HTTP status codes, not SSE frames.
     """
-    try:
-        sid = UUID(session_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="Invalid session_id format")
+    sid = _parse_sid(session_id)
+    _check_access(request, sid, user)
 
     assistant: Assistant = request.app.state.assistant
+    uid = str(user.id)
 
     def event_stream():
         try:
-            for ev in assistant.handle_stream(sid, req.message):
+            for ev in assistant.handle_stream(sid, req.message, user_id=uid):
                 if isinstance(ev, StreamMeta):
                     yield _sse("meta", {
                         "language": ev.analysis.language,

@@ -171,6 +171,62 @@ class SessionRepository:
             logger.info("session.created", extra={"session_id": str(session_id)})
             return session
 
+    def create(self, *, user_id: str, title: Optional[str] = None) -> Session:
+        """Create a fresh empty session owned by `user_id`."""
+        session = Session(user_id=user_id, title=title)
+        with DbSession(self._engine) as db:
+            db.add(session)
+            db.commit()
+            db.refresh(session)
+        logger.info("session.created", extra={"session_id": str(session.id)})
+        return session
+
+    def get(self, session_id: UUID, *, include_deleted: bool = False) -> Optional[Session]:
+        with DbSession(self._engine) as db:
+            session = db.get(Session, session_id)
+            if session is None:
+                return None
+            if session.deleted_at is not None and not include_deleted:
+                return None
+            return session
+
+    def list_sessions(self, user_id: str) -> list[Session]:
+        """A user's sessions, newest first, excluding soft-deleted."""
+        with DbSession(self._engine) as db:
+            stmt = (
+                select(Session)
+                .where(Session.user_id == user_id, Session.deleted_at.is_(None))  # type: ignore[union-attr]
+                .order_by(Session.created_at.desc())  # type: ignore[union-attr]
+            )
+            return list(db.exec(stmt).all())
+
+    def messages(self, session_id: UUID, *, include_deleted: bool = False) -> list[Turn]:
+        """All turns for a session, oldest first."""
+        with DbSession(self._engine) as db:
+            stmt = select(Turn).where(Turn.session_id == session_id)
+            if not include_deleted:
+                stmt = stmt.where(Turn.deleted_at.is_(None))  # type: ignore[union-attr]
+            stmt = stmt.order_by(Turn.created_at)  # type: ignore[union-attr]
+            return list(db.exec(stmt).all())
+
+    def set_title_if_unset(self, session_id: UUID, title: str) -> None:
+        """Set the session title only if it has none yet (first message)."""
+        with DbSession(self._engine) as db:
+            session = db.get(Session, session_id)
+            if session is not None and session.title is None:
+                session.title = title
+                db.add(session)
+                db.commit()
+
+    def rename(self, session_id: UUID, title: str) -> None:
+        with DbSession(self._engine) as db:
+            session = db.get(Session, session_id)
+            if session is None:
+                return
+            session.title = title
+            db.add(session)
+            db.commit()
+
     def append_turn(
         self,
         session_id: UUID,

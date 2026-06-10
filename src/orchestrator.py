@@ -95,6 +95,12 @@ def _ack_for(language: str) -> str:
     return _FEEDBACK_ACK.get(language, _FEEDBACK_ACK["english"])
 
 
+def _titleize(message: str, *, max_len: int = 60) -> str:
+    """Derive a short session title from the first user message."""
+    text = " ".join(message.split())
+    return text if len(text) <= max_len else text[: max_len - 1].rstrip() + "…"
+
+
 # ---------------------------------------------------------------------------
 # Assistant
 # ---------------------------------------------------------------------------
@@ -121,6 +127,7 @@ class Assistant:
         message: str,
         *,
         tenant_id: Optional[UUID] = None,
+        user_id: Optional[str] = None,
     ) -> Response:
         new_correlation_id()
         logger.info(
@@ -128,7 +135,7 @@ class Assistant:
             extra={"session_id": str(session_id), "msg_chars": len(message)},
         )
 
-        self._sessions.get_or_create(session_id, tenant_id=tenant_id)
+        self._sessions.get_or_create(session_id, tenant_id=tenant_id, user_id=user_id)
 
         analysis = self._cl.analyze(message)
 
@@ -139,6 +146,7 @@ class Assistant:
             language=analysis.language,
             tenant_id=tenant_id,
         )
+        self._sessions.set_title_if_unset(session_id, _titleize(message))
 
         if analysis.type == "feedback":
             self._feedback.add(
@@ -194,6 +202,7 @@ class Assistant:
         message: str,
         *,
         tenant_id: Optional[UUID] = None,
+        user_id: Optional[str] = None,
     ) -> Iterator[StreamEvent]:
         """Streaming counterpart of `handle`.
 
@@ -208,7 +217,7 @@ class Assistant:
             extra={"session_id": str(session_id), "msg_chars": len(message)},
         )
 
-        self._sessions.get_or_create(session_id, tenant_id=tenant_id)
+        self._sessions.get_or_create(session_id, tenant_id=tenant_id, user_id=user_id)
 
         analysis = self._cl.analyze(message)
         self._sessions.append_turn(
@@ -218,6 +227,7 @@ class Assistant:
             language=analysis.language,
             tenant_id=tenant_id,
         )
+        self._sessions.set_title_if_unset(session_id, _titleize(message))
         yield StreamMeta(analysis=analysis)
 
         if analysis.type == "feedback":
