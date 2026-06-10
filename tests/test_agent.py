@@ -11,7 +11,16 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
-from agent import AnswerResult, RAGAgent, Turn, _format_context
+from agent import (
+    AnswerComplete,
+    AnswerResult,
+    RAGAgent,
+    TextDelta,
+    Turn,
+    _format_context,
+    _overlap,
+    _parse_citations,
+)
 from vector_store import Chunk
 
 
@@ -87,6 +96,23 @@ class RecordingLLM:
         return self._payload
 
 
+class StreamingLLM:
+    """Yields the given deltas from stream_text; complete_structured unused."""
+
+    def __init__(self, deltas):
+        self._deltas = deltas
+        self.last: dict[str, Any] = {}
+
+    def stream_text(self, *, system, user, history=(),
+                    temperature=0.0, max_tokens=1024):
+        self.last = {"system": system, "user": user, "history": list(history)}
+        for d in self._deltas:
+            yield d
+
+    def complete_structured(self, **kw):  # pragma: no cover - guard
+        raise AssertionError("answer_stream must not call complete_structured")
+
+
 # ---------------------------------------------------------------------------
 # RAGAgent.answer
 # ---------------------------------------------------------------------------
@@ -153,3 +179,84 @@ def test_answer_uses_placeholder_context_when_no_chunks():
     agent, _, llm = _make_agent([], {"text": "I don't have that.", "citations": []})
     agent.answer("obscure question", language="english")
     assert "(no relevant documentation found)" in llm.last["system"]
+
+
+# ---------------------------------------------------------------------------
+# Streaming helpers — _overlap and _parse_citations
+# ---------------------------------------------------------------------------
+
+def test_overlap_detects_partial_sentinel_suffix():
+    sentinel = "\n---CITATIONS---"
+    # A buffer ending in the start of the sentinel must be held back.
+    assert _overlap("answer\n---CIT", sentinel) == len("\n---CIT")
+    # No overlap when the suffix isn't a sentinel prefix.
+    assert _overlap("just words", sentinel) == 0
+
+
+def test_parse_citations_valid_and_garbage():
+    good = _parse_citations('[{"source": "a.md", "section": "S"}]')
+    assert len(good) == 1 and good[0].source == "a.md"
+    assert _parse_citations("") == []
+    assert _parse_citations("not json at all") == []
+
+
+# ---------------------------------------------------------------------------
+# RAGAgent.answer_stream
+# ---------------------------------------------------------------------------
+
+def _stream_agent(deltas, chunks=None):
+    docs = FakeDocumentStore(chunks if chunks is not None else [_chunk("ctx", source_id="a.md")])
+    llm = StreamingLLM(deltas)
+    return RAGAgent(document_store=docs, llm=llm), docs, llm
+
+
+def test_answer_stream_splits_prose_from_citations_across_chunks():
+    # Sentinel deliberately split across deltas to exercise the hold-back.
+    deltas = [
+        "Use a 70% ", "isopropyl wipe.", "\n---CIT", "ATIONS---\n",
+        '[{"source": "06_cleaning.md", ', '"section": "Centrifuges"}]',
+    ]
+    agent, _, _ = _stream_agent(deltas)
+    pieces = list(agent.answer_stream("how do I clean it?", language="english"))
+
+    text = "".join(p.text for p in pieces if isinstance(p, TextDelta))
+    completes = [p for p in pieces if isinstance(p, AnswerComplete)]
+
+    assert text == "Use a 70% isopropyl wipe."
+    assert "---CITATIONS---" not in text          # sentinel never leaks
+    assert "source" not in text                   # JSON tail never leaks
+    assert len(completes) == 1
+    assert completes[0].text == "Use a 70% isopropyl wipe."
+    assert completes[0].citations[0].source == "06_cleaning.md"
+    assert completes[0].citations[0].section == "Centrifuges"
+
+
+def test_answer_stream_terminal_event_is_last():
+    deltas = ["hello.", "\n---CITATIONS---\n", "[]"]
+    agent, _, _ = _stream_agent(deltas)
+    pieces = list(agent.answer_stream("q", language="english"))
+    assert isinstance(pieces[-1], AnswerComplete)
+    assert all(isinstance(p, TextDelta) for p in pieces[:-1])
+
+
+def test_answer_stream_without_sentinel_yields_all_prose_no_citations():
+    deltas = ["The model ", "forgot the delimiter."]
+    agent, _, _ = _stream_agent(deltas)
+    pieces = list(agent.answer_stream("q", language="english"))
+    text = "".join(p.text for p in pieces if isinstance(p, TextDelta))
+    complete = pieces[-1]
+    assert text == "The model forgot the delimiter."
+    assert isinstance(complete, AnswerComplete)
+    assert complete.text == "The model forgot the delimiter."
+    assert complete.citations == []
+
+
+def test_answer_stream_builds_streaming_prompt_with_language_and_context():
+    agent, _, llm = _stream_agent(
+        ["ok.", "\n---CITATIONS---\n", "[]"],
+        chunks=[_chunk("use isopropyl", source_id="06_cleaning.md", section="Centrifuges")],
+    )
+    list(agent.answer_stream("question", language="french"))
+    assert "french" in llm.last["system"]
+    assert "---CITATIONS---" in llm.last["system"]      # streaming output contract
+    assert "[source: 06_cleaning.md §Centrifuges]" in llm.last["system"]

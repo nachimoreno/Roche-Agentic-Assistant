@@ -11,6 +11,7 @@ ourselves.
 
 from __future__ import annotations
 
+import json
 import os
 
 # `api` instantiates Settings() at import time, which requires a Groq key.
@@ -25,7 +26,7 @@ from fastapi.testclient import TestClient
 import api
 from agent import Citation
 from conversation_layer import AnalysisResult
-from orchestrator import Response
+from orchestrator import Response, StreamDone, StreamMeta, StreamToken
 
 
 # ---------------------------------------------------------------------------
@@ -186,3 +187,86 @@ def test_index_serves_html(client):
 def test_dashboard_route_is_gone(client):
     # Regression guard: the broken /dashboard route was removed.
     assert client.get("/dashboard").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Streaming chat (SSE)
+# ---------------------------------------------------------------------------
+
+class FakeStreamingAssistant:
+    """Yields canned stream events; or raises mid-stream after `meta`."""
+
+    def __init__(self, tokens, citations, *, raise_after_meta=False):
+        self._tokens = tokens
+        self._citations = citations
+        self._raise = raise_after_meta
+        self.calls: list[tuple] = []
+
+    def handle_stream(self, session_id, message, **kwargs):
+        self.calls.append((session_id, message))
+        yield StreamMeta(
+            analysis=AnalysisResult(language="english", type="question", emotion=None)
+        )
+        if self._raise:
+            raise RuntimeError("secret: token=abc123")
+        for t in self._tokens:
+            yield StreamToken(text=t)
+        yield StreamDone(text="".join(self._tokens), citations=self._citations)
+
+
+def _parse_sse(body: str) -> list[tuple[str, dict]]:
+    """Parse an SSE body into (event, data-dict) frames."""
+    frames = []
+    for block in body.strip().split("\n\n"):
+        if not block.strip():
+            continue
+        event, data = None, None
+        for line in block.splitlines():
+            if line.startswith("event:"):
+                event = line[len("event:"):].strip()
+            elif line.startswith("data:"):
+                data = json.loads(line[len("data:"):].strip())
+        frames.append((event, data))
+    return frames
+
+
+def test_stream_emits_meta_tokens_then_done(client):
+    cites = [Citation(source="06_cleaning.md", section="Centrifuges")]
+    _inject(FakeStreamingAssistant(["Use ", "isopropyl."], cites))
+    sid = str(UUID(int=10))
+
+    resp = client.post(f"/api/sessions/{sid}/chat/stream", json={"message": "how?"})
+    assert resp.status_code == 200
+    assert "text/event-stream" in resp.headers["content-type"]
+
+    frames = _parse_sse(resp.text)
+    events = [e for e, _ in frames]
+    assert events[0] == "meta"
+    assert events[-1] == "done"
+    assert events.count("token") == 2
+
+    meta = frames[0][1]
+    assert meta["language"] == "english" and meta["type"] == "question"
+    text = "".join(d["text"] for e, d in frames if e == "token")
+    assert text == "Use isopropyl."
+    done = frames[-1][1]
+    assert done["citations"] == [{"source": "06_cleaning.md", "section": "Centrifuges"}]
+
+
+def test_stream_rejects_malformed_session_id(client):
+    _inject(FakeStreamingAssistant(["x"], []))
+    resp = client.post("/api/sessions/not-a-uuid/chat/stream", json={"message": "hi"})
+    assert resp.status_code == 422
+
+
+def test_stream_error_emits_error_event_without_leaking(client):
+    _inject(FakeStreamingAssistant(["x"], [], raise_after_meta=True))
+    sid = str(UUID(int=11))
+
+    resp = client.post(f"/api/sessions/{sid}/chat/stream", json={"message": "hi"})
+    # Stream starts 200; the failure surfaces as an SSE error frame.
+    assert resp.status_code == 200
+    frames = _parse_sse(resp.text)
+    assert frames[-1][0] == "error"
+    assert frames[-1][1]["detail"] == "Internal error handling the request."
+    assert "abc123" not in resp.text

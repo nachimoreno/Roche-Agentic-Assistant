@@ -675,11 +675,8 @@ function renderAi(m, stream = true) {
   row.setAttribute('role', 'article');
   row.dataset.ts = m.ts;
 
-  const cits  = m.citations || [];
-  const badge = evidenceBadge(cits.length);
   const lang  = langBadge(m.language);
   const rtype = { question:'Scientific Response', feedback:'Acknowledged', error:'System Notice' }[m.type] || 'Scientific Response';
-  const isPinned = pinned.some(p => p.ts === m.ts);
 
   row.innerHTML = `
     <div class="ai-row">
@@ -689,7 +686,7 @@ function renderAi(m, stream = true) {
           <div class="response-label">
             <span class="rl-type">${rtype}</span>
             <span class="rl-space"></span>
-            ${lang}${badge}
+            ${lang}<span id="badge${m.ts}">${evidenceBadge((m.citations||[]).length)}</span>
           </div>
           <div class="response-body${stream ? ' stream-active' : ''}" id="rb${m.ts}"></div>
         </div>
@@ -704,11 +701,23 @@ function renderAi(m, stream = true) {
   const actsEl   = document.getElementById('acts' + m.ts);
   const fuEl     = document.getElementById('fu' + m.ts);
   const avatarEl = document.getElementById('av' + m.ts);
+  const badgeEl  = document.getElementById('badge' + m.ts);
 
+  // Append a real-time token; body stays plain text until finalize() renders
+  // markdown + citations.
+  function pushToken(t) {
+    m.content += t;
+    bodyEl.textContent = m.content;
+    if (autoScroll) window.scrollTo(0, document.body.scrollHeight);
+  }
+
+  // Read citations/content fresh so the caller can mutate `m` while streaming.
   function finalize() {
+    const cits = m.citations || [];
     avatarEl.classList.remove('pulsing');
     bodyEl.classList.remove('stream-active');
     bodyEl.innerHTML = parseMD(m.content, cits);
+    badgeEl.innerHTML = evidenceBadge(cits.length);
     checkCollapse(bodyEl, cardEl);
     if (cits.length) cardEl.insertAdjacentHTML('beforeend', citHTML(cits));
     buildActions(actsEl, m, row);
@@ -716,12 +725,14 @@ function renderAi(m, stream = true) {
     scrollBottom();
   }
 
-  if (stream && m.content) {
+  if (m.live) {
+    // Real SSE streaming: the caller drives pushToken()/finalize().
+  } else if (stream && m.content) {
     streamInto(bodyEl, m.content, finalize);
   } else {
     finalize();
   }
-  return row;
+  return { row, bodyEl, pushToken, finalize };
 }
 
 /* ─── STREAMING ──────────────────────────────────────────────── */
@@ -793,23 +804,76 @@ async function sendMessage(text) {
   }
   showThinking(); scrollBottom();
 
+  let aiMsg = null, handles = null;
   try {
-    const r = await fetch(`/api/sessions/${sessionId}/chat`, {
+    const r = await fetch(`/api/sessions/${sessionId}/chat/stream`, {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ message: text }),
     });
-    if (!r.ok) throw new Error(r.status);
-    const d = await r.json();
-    hideThinking();
-    const aiMsg = { role:'ai', content:d.text, ts:Date.now(), type:d.type, language:d.language, citations:d.citations||[] };
-    messages.push(aiMsg); persist(); renderAi(aiMsg, true);
+    if (!r.ok || !r.body) throw new Error(r.status);
+
+    const reader  = r.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '', streamErr = false;
+
+    outer:
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream:true });
+
+      let sep;
+      while ((sep = buf.indexOf('\n\n')) !== -1) {
+        const ev = parseSSEFrame(buf.slice(0, sep));
+        buf = buf.slice(sep + 2);
+        if (!ev) continue;
+
+        if (ev.event === 'meta') {
+          hideThinking();
+          aiMsg = { role:'ai', content:'', ts:Date.now(), type:ev.data.type,
+                    language:ev.data.language, citations:[], live:true };
+          messages.push(aiMsg);
+          handles = renderAi(aiMsg, true);
+        } else if (ev.event === 'token') {
+          handles?.pushToken(ev.data.text);
+        } else if (ev.event === 'done') {
+          if (aiMsg) {
+            aiMsg.citations = ev.data.citations || [];
+            delete aiMsg.live;
+          }
+          persist();
+          handles?.finalize();
+          break outer;
+        } else if (ev.event === 'error') {
+          streamErr = true;
+          break outer;
+        }
+      }
+    }
+    if (streamErr) throw new Error('stream-error');
   } catch {
     hideThinking();
-    const errMsg = { role:'ai', content:'There was a problem reaching the scientific knowledge base. Please check your connection and try again.', ts:Date.now(), type:'error', citations:[] };
-    messages.push(errMsg); persist(); renderAi(errMsg, false);
+    if (handles && aiMsg) {
+      // Partial answer already on screen — finalize what we have.
+      delete aiMsg.live; persist(); handles.finalize();
+    } else {
+      const errMsg = { role:'ai', content:'There was a problem reaching the scientific knowledge base. Please check your connection and try again.', ts:Date.now(), type:'error', citations:[] };
+      messages.push(errMsg); persist(); renderAi(errMsg, false);
+    }
   } finally {
     busy = false; $send.disabled = !$input.value.trim();
   }
+}
+
+/* Parse one SSE frame ("event: x\ndata: {...}") into {event, data}. */
+function parseSSEFrame(frame) {
+  let event = 'message', data = '';
+  for (const line of frame.split('\n')) {
+    if (line.startsWith('event:'))     event = line.slice(6).trim();
+    else if (line.startsWith('data:')) data += line.slice(5).trim();
+  }
+  if (!data) return null;
+  try { return { event, data: JSON.parse(data) }; } catch { return null; }
 }
 
 /* ─── RESPONSE HELPERS ───────────────────────────────────────── */

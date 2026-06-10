@@ -14,6 +14,7 @@ root shared with the CLI — so the API and CLI always wire up the same stack
 """
 from __future__ import annotations
 
+import json
 import logging
 import sys
 from contextlib import asynccontextmanager
@@ -27,14 +28,14 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from db import new_id
 from logging_setup import setup_logging
 from main import build_assistant
-from orchestrator import Assistant
+from orchestrator import Assistant, StreamDone, StreamMeta, StreamToken
 from settings import Settings
 
 load_dotenv()
@@ -127,6 +128,55 @@ def chat(session_id: str, req: ChatRequest, request: Request):
             CitationOut(source=c.source, section=c.section)
             for c in resp.citations
         ],
+    )
+
+
+def _sse(event: str, data: dict) -> str:
+    """Format a single Server-Sent Event frame."""
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+@app.post("/api/sessions/{session_id}/chat/stream")
+def chat_stream(session_id: str, req: ChatRequest, request: Request):
+    """Same as /chat, but streams the reply token-by-token over SSE.
+
+    Event sequence: `meta` (language/type/emotion) -> `token`* (text deltas)
+    -> `done` (citations). On failure an `error` event is emitted instead of
+    leaking the exception.
+    """
+    try:
+        sid = UUID(session_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid session_id format")
+
+    assistant: Assistant = request.app.state.assistant
+
+    def event_stream():
+        try:
+            for ev in assistant.handle_stream(sid, req.message):
+                if isinstance(ev, StreamMeta):
+                    yield _sse("meta", {
+                        "language": ev.analysis.language,
+                        "type": ev.analysis.type,
+                        "emotion": ev.analysis.emotion,
+                    })
+                elif isinstance(ev, StreamToken):
+                    yield _sse("token", {"text": ev.text})
+                elif isinstance(ev, StreamDone):
+                    yield _sse("done", {
+                        "citations": [
+                            {"source": c.source, "section": c.section}
+                            for c in ev.citations
+                        ],
+                    })
+        except Exception:
+            logger.exception("api.chat_stream.failed", extra={"session_id": str(sid)})
+            yield _sse("error", {"detail": "Internal error handling the request."})
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 

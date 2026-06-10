@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Protocol, Sequence
+from typing import Any, Iterator, Protocol, Sequence
 
 from groq import Groq
 
@@ -32,6 +32,23 @@ class LLMClient(Protocol):
         max_tokens: int = 1024,
     ) -> dict[str, Any]:
         """Return a JSON payload matching `schema`."""
+        ...
+
+    def stream_text(
+        self,
+        *,
+        system: str,
+        user: str,
+        history: Sequence[dict[str, str]] = (),
+        temperature: float = 0.0,
+        max_tokens: int = 1024,
+    ) -> Iterator[str]:
+        """Yield plain-text deltas as the model produces them.
+
+        Unlike `complete_structured`, the caller is responsible for any
+        output structure via the system prompt (the response is not forced
+        into JSON mode, so tokens can be streamed as they arrive).
+        """
         ...
 
 
@@ -78,3 +95,32 @@ class GroqClient:
             raise ValueError(
                 f"GroqClient: model returned non-JSON output.\nRaw: {raw!r}"
             ) from exc
+
+    def stream_text(
+        self,
+        *,
+        system: str,
+        user: str,
+        history: Sequence[dict[str, str]] = (),
+        temperature: float = 0.0,
+        max_tokens: int = 1024,
+    ) -> Iterator[str]:
+        messages: list[dict[str, str]] = [{"role": "system", "content": system}]
+        messages.extend(history)
+        messages.append({"role": "user", "content": user})
+
+        stream = self._client.chat.completions.create(
+            model=self._model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True,
+        )
+
+        n = 0
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                n += len(delta)
+                yield delta
+        logger.debug("llm.stream.done", extra={"model": self._model, "bytes": n})

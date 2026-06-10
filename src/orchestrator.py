@@ -18,10 +18,17 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
+from typing import Iterator, Optional, Union
 from uuid import UUID
 
-from agent import AnswerResult, Citation, RAGAgent, Turn as AgentTurn
+from agent import (
+    AnswerComplete,
+    AnswerResult,
+    Citation,
+    RAGAgent,
+    TextDelta,
+    Turn as AgentTurn,
+)
 from conversation_layer import AnalysisResult, ConversationLayer
 from db import FeedbackEntry
 from logging_setup import new_correlation_id
@@ -40,6 +47,35 @@ class Response:
     text: str
     analysis: AnalysisResult
     citations: list[Citation]
+
+
+# ---------------------------------------------------------------------------
+# Streaming events — what `handle_stream` yields, transport-agnostic.
+# ---------------------------------------------------------------------------
+
+@dataclass
+class StreamMeta:
+    """First event: classification of the incoming message."""
+
+    analysis: AnalysisResult
+
+
+@dataclass
+class StreamToken:
+    """A delta of assistant text to append in the UI."""
+
+    text: str
+
+
+@dataclass
+class StreamDone:
+    """Terminal event: the full text (already persisted) and citations."""
+
+    text: str
+    citations: list[Citation]
+
+
+StreamEvent = Union[StreamMeta, StreamToken, StreamDone]
 
 
 # ---------------------------------------------------------------------------
@@ -151,3 +187,86 @@ class Assistant:
             analysis=analysis,
             citations=answer.citations,
         )
+
+    def handle_stream(
+        self,
+        session_id: UUID,
+        message: str,
+        *,
+        tenant_id: Optional[UUID] = None,
+    ) -> Iterator[StreamEvent]:
+        """Streaming counterpart of `handle`.
+
+        Yields a `StreamMeta`, then `StreamToken`s, then a terminal
+        `StreamDone`. The user turn is persisted up front; the assistant turn
+        is persisted once the full answer has streamed (before `StreamDone`),
+        so persistence semantics match the non-streaming path.
+        """
+        new_correlation_id()
+        logger.info(
+            "turn.stream.start",
+            extra={"session_id": str(session_id), "msg_chars": len(message)},
+        )
+
+        self._sessions.get_or_create(session_id, tenant_id=tenant_id)
+
+        analysis = self._cl.analyze(message)
+        self._sessions.append_turn(
+            session_id,
+            role="user",
+            content=message,
+            language=analysis.language,
+            tenant_id=tenant_id,
+        )
+        yield StreamMeta(analysis=analysis)
+
+        if analysis.type == "feedback":
+            self._feedback.add(
+                FeedbackEntry(
+                    session_id=session_id,
+                    tenant_id=tenant_id,
+                    language=analysis.language,
+                    emotion=analysis.emotion or "neutral",
+                    message=message,
+                )
+            )
+            ack = _ack_for(analysis.language)
+            yield StreamToken(text=ack)
+            self._sessions.append_turn(
+                session_id,
+                role="assistant",
+                content=ack,
+                language=analysis.language,
+                tenant_id=tenant_id,
+            )
+            yield StreamDone(text=ack, citations=[])
+            return
+
+        history_rows = self._sessions.recent_turns(session_id, n=self._history_turns)
+        history = [
+            AgentTurn(role=t.role, content=t.content)
+            for t in history_rows[:-1]   # drop the just-appended user turn
+        ]
+
+        full_text = ""
+        citations: list[Citation] = []
+        for piece in self._agent.answer_stream(
+            message=message,
+            language=analysis.language,
+            history=history,
+        ):
+            if isinstance(piece, TextDelta):
+                full_text += piece.text
+                yield StreamToken(text=piece.text)
+            elif isinstance(piece, AnswerComplete):
+                full_text = piece.text
+                citations = piece.citations
+
+        self._sessions.append_turn(
+            session_id,
+            role="assistant",
+            content=full_text,
+            language=analysis.language,
+            tenant_id=tenant_id,
+        )
+        yield StreamDone(text=full_text, citations=citations)

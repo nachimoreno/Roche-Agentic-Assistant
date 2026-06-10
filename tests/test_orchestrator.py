@@ -22,7 +22,7 @@ from db import create_all, make_engine, new_id
 from document_source import LocalMarkdownSource
 from embeddings import FastEmbedProvider
 from llm import GroqClient, LLMClient
-from orchestrator import Assistant
+from orchestrator import Assistant, StreamDone, StreamMeta, StreamToken
 from repositories import FeedbackRepository, SessionRepository
 from retrieval import DocumentStore
 from settings import Settings
@@ -101,6 +101,23 @@ class FakeLLMClient:
             ],
         }
 
+    def stream_text(
+        self,
+        *,
+        system: str,
+        user: str,
+        history: Sequence[dict[str, str]] = (),
+        temperature: float = 0.0,
+        max_tokens: int = 1024,
+    ):
+        self.calls.append({"system": system, "user": user, "history": list(history)})
+        # Prose, then the delimiter, then the JSON citations tail — chunked
+        # the way a real token stream would arrive.
+        yield "Use a 70 percent "
+        yield "isopropyl alcohol wipe."
+        yield "\n---CITATIONS---\n"
+        yield '[{"source": "06_cleaning_lab_devices.md", "section": "Centrifuges"}]'
+
 
 # ---------------------------------------------------------------------------
 # Fake-LLM end-to-end — fast, no API calls.
@@ -158,6 +175,58 @@ def test_multi_turn_history_grows_in_order(fake_assistant):
     turns = sessions.recent_turns(sid, n=10)
     roles = [t.role for t in turns]
     assert roles == ["user", "assistant", "user", "assistant"]
+
+
+# ---------------------------------------------------------------------------
+# Streaming (handle_stream) — fast, no API calls.
+# ---------------------------------------------------------------------------
+
+def test_stream_question_emits_meta_tokens_done_and_persists(fake_assistant):
+    assistant, sessions, _ = fake_assistant
+    sid = new_id()
+    events = list(assistant.handle_stream(sid, "How do I clean the centrifuge?"))
+
+    # First event is meta, last is done.
+    assert isinstance(events[0], StreamMeta)
+    assert events[0].analysis.type == "question"
+    done = events[-1]
+    assert isinstance(done, StreamDone)
+
+    tokens = [e for e in events if isinstance(e, StreamToken)]
+    full = "".join(e.text for e in tokens)
+    assert "isopropyl" in full
+    # The sentinel and JSON tail must never leak as prose.
+    assert "---CITATIONS---" not in full
+    assert "source" not in full
+
+    assert done.text == full
+    assert len(done.citations) == 1
+    assert done.citations[0].source == "06_cleaning_lab_devices.md"
+
+    # Assistant turn persisted with the assembled prose (not the raw stream).
+    turns = sessions.recent_turns(sid, n=10)
+    assert [t.role for t in turns] == ["user", "assistant"]
+    assert turns[-1].content == full
+
+
+def test_stream_feedback_acks_and_persists_feedback(fake_assistant):
+    assistant, sessions, feedback_repo = fake_assistant
+    sid = new_id()
+    events = list(assistant.handle_stream(sid, "This onboarding doc is really confusing."))
+
+    assert isinstance(events[0], StreamMeta)
+    assert events[0].analysis.type == "feedback"
+    done = events[-1]
+    assert isinstance(done, StreamDone)
+    assert done.citations == []
+    assert done.text  # an acknowledgement was streamed
+
+    rows = feedback_repo.list()
+    assert len(rows) == 1
+    assert rows[0].emotion == "confused"
+
+    turns = sessions.recent_turns(sid, n=10)
+    assert [t.role for t in turns] == ["user", "assistant"]
 
 
 # ---------------------------------------------------------------------------
@@ -222,6 +291,29 @@ def test_live_agent_describes_its_capabilities(live_assistant):
         )
     )
     assert hits >= 2, f"capability answer mentioned too few features: {resp.text!r}"
+
+
+@pytest.mark.live
+def test_live_stream_question_yields_clean_prose_and_citations(live_assistant):
+    assistant, sessions, _ = live_assistant
+    sid = new_id()
+    events = list(assistant.handle_stream(sid, "How do I clean the centrifuge?"))
+
+    assert isinstance(events[0], StreamMeta)
+    assert events[0].analysis.type == "question"
+
+    tokens = [e for e in events if isinstance(e, StreamToken)]
+    full = "".join(e.text for e in tokens)
+    assert full.strip()
+    # The real model must not leak the delimiter into the streamed prose.
+    assert "---CITATIONS---" not in full
+
+    done = events[-1]
+    assert isinstance(done, StreamDone)
+    assert done.text == full
+    assert done.citations  # grounded answer should cite at least one source
+    # Persisted assistant turn matches the assembled prose.
+    assert sessions.recent_turns(sid, n=10)[-1].content == full
 
 
 @pytest.mark.live
