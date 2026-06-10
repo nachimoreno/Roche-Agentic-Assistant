@@ -34,9 +34,19 @@ class Settings(BaseSettings):
 
     # ---- Retrieval ----------------------------------------------------
     chroma_path: str = ".chroma"
-    docs_path: str = "data/docs"
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     top_k: int = 4
+
+    # ---- Document source ----------------------------------------------
+    # Which DocumentSource to ingest from. "local" reads markdown from
+    # docs_path; "google_drive" pulls from a Shared Drive folder.
+    document_source: Literal["local", "google_drive"] = "local"
+    docs_path: str = "data/docs"
+    # Google Drive (only used when document_source == "google_drive").
+    drive_folder_id: Optional[str] = None
+    drive_recursive: bool = True
+    google_service_account_json: Optional[str] = None
+    google_oauth_credentials: Optional[str] = None
 
     # ---- Observability ------------------------------------------------
     log_level: str = "INFO"

@@ -5,9 +5,11 @@ A `DocumentSource` implementation that reads from Google Drive.
 Drops in as a direct replacement for `LocalMarkdownSource` — same
 `SourceDocument` output shape, same `list_documents()` interface.
 
-HOW TO PLUG IN (in orchestrator.py or wherever DocumentSource is wired):
-    from google_drive_source import GoogleDriveSource
-    source = GoogleDriveSource(folder_id=settings.DRIVE_FOLDER_ID)
+HOW TO PLUG IN:
+    Set `DOCUMENT_SOURCE=google_drive` in .env — `main.build_source()` then
+    constructs this from `Settings`. To wire it manually somewhere else:
+        from google_drive_source import GoogleDriveSource
+        source = GoogleDriveSource(folder_id=settings.drive_folder_id)
     # pass `source` wherever LocalMarkdownSource was passed — nothing else changes.
 
 SETUP:
@@ -19,14 +21,15 @@ SETUP:
          DRIVE_FOLDER_ID=<your folder id from the Drive URL>
 
 AUTH FALLBACK (for local dev without a service account):
-    Set GOOGLE_OAUTH_CREDENTIALS=path/to/oauth_token.json instead.
-    Run `scripts/drive_auth.py` once to generate that token file.
+    Set GOOGLE_OAUTH_CREDENTIALS=path/to/oauth_token.json instead — a token
+    file produced by the standard google-auth-oauthlib InstalledAppFlow.
 
 SUPPORTED FILE TYPES:
     - Google Docs        → exported as plain text
     - Google Sheets      → exported as CSV text
     - .txt / .md files   → downloaded directly
     - PDFs               → text extracted (requires pypdf)
+    - .docx              → text extracted (requires python-docx)
 
 VERSION DEDUPLICATION:
     If multiple files in the folder share the same name, only the most

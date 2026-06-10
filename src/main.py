@@ -18,7 +18,8 @@ from dotenv import load_dotenv
 from agent import RAGAgent
 from conversation_layer import ConversationLayer
 from db import create_all, make_engine, new_id
-from document_source import LocalMarkdownSource
+from document_source import DocumentSource, LocalMarkdownSource
+from google_drive_source import GoogleDriveSource
 from embeddings import FastEmbedProvider
 from llm import GroqClient
 from logging_setup import setup_logging
@@ -30,6 +31,29 @@ from vector_store import ChromaVectorStore
 
 
 logger = logging.getLogger(__name__)
+
+
+def build_source(settings: Settings) -> DocumentSource:
+    """Select the DocumentSource to ingest from based on settings.
+
+    Both implementations yield the same `SourceDocument` shape, so nothing
+    downstream of here cares which one is used.
+    """
+    if settings.document_source == "google_drive":
+        if not settings.drive_folder_id:
+            raise ValueError(
+                "document_source='google_drive' requires drive_folder_id "
+                "(set DRIVE_FOLDER_ID in .env)."
+            )
+        return GoogleDriveSource(
+            folder_id=settings.drive_folder_id,
+            credentials_path=(
+                settings.google_service_account_json
+                or settings.google_oauth_credentials
+            ),
+            recursive=settings.drive_recursive,
+        )
+    return LocalMarkdownSource(path=settings.docs_path)
 
 
 def build_assistant(settings: Settings) -> Assistant:
@@ -47,7 +71,7 @@ def build_assistant(settings: Settings) -> Assistant:
         path=settings.chroma_path,
         collection_name=f"roche_{embedder.name.replace('/', '_')}",
     )
-    source = LocalMarkdownSource(path=settings.docs_path)
+    source = build_source(settings)
 
     docs = DocumentStore(
         source=source,
