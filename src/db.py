@@ -16,13 +16,17 @@ Production-shaped from day one:
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import Engine
+from sqlalchemy import Engine, inspect, text
 from sqlmodel import Field, SQLModel, create_engine
 from uuid_utils import uuid7
+
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -99,3 +103,34 @@ def make_engine(database_url: str, *, echo: bool = False) -> Engine:
 
 def create_all(engine: Engine) -> None:
     SQLModel.metadata.create_all(engine)
+    _add_missing_columns(engine)
+
+
+def _add_missing_columns(engine: Engine) -> None:
+    """Dev convenience: additively add new nullable columns to existing tables.
+
+    `create_all` creates missing tables but never ALTERs existing ones, so a
+    dev SQLite database created before a new column was added would be missing
+    it. This adds any missing *nullable* columns for SQLite only. Production
+    (Postgres) should use real migrations.
+    """
+    if engine.dialect.name != "sqlite":
+        return
+    insp = inspect(engine)
+    tables = set(insp.get_table_names())
+    for table_name, table in SQLModel.metadata.tables.items():
+        if table_name not in tables:
+            continue
+        existing = {c["name"] for c in insp.get_columns(table_name)}
+        for col in table.columns:
+            if col.name in existing or not col.nullable:
+                continue
+            ddl_type = col.type.compile(dialect=engine.dialect)
+            with engine.begin() as conn:
+                conn.execute(
+                    text(f'ALTER TABLE "{table_name}" ADD COLUMN "{col.name}" {ddl_type}')
+                )
+            logger.info(
+                "schema.column.added",
+                extra={"table": table_name, "column": col.name},
+            )

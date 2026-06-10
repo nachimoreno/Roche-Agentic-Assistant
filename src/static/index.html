@@ -406,12 +406,115 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
   .msg-row{animation:none;opacity:1}
   .cmdpal-card{animation:none}
 }
+
+/* ─── AUTH OVERLAY ─────────────────────────────────────────────── */
+.auth-overlay{position:fixed;inset:0;z-index:2000;display:none;align-items:center;justify-content:center;
+  background:var(--bg);padding:24px}
+.auth-overlay.show{display:flex}
+.auth-card{width:100%;max-width:380px;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:32px 28px;box-shadow:0 12px 40px rgba(15,25,35,.12)}
+.auth-brand{display:flex;align-items:center;gap:10px;margin-bottom:22px}
+.auth-brand .hdr-mark{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+  background:var(--accent,#0B41CD);color:#fff;font-weight:700}
+.auth-title{font-size:18px;font-weight:600;color:var(--t1);letter-spacing:-.3px}
+.auth-sub{font-size:13px;color:var(--t3);margin:2px 0 22px}
+.auth-field{margin-bottom:14px}
+.auth-field label{display:block;font-size:12px;font-weight:500;color:var(--t3);margin-bottom:6px}
+.auth-field input{width:100%;padding:10px 12px;border:1px solid var(--border-2);border-radius:var(--r-lg);
+  background:var(--surface-2);font-size:14px;color:var(--t1);outline:none;transition:border var(--tx)}
+.auth-field input:focus{border-color:var(--accent,#0B41CD)}
+.auth-btn{width:100%;padding:11px;border-radius:var(--r-lg);background:var(--t1);color:var(--bg);
+  font-size:14px;font-weight:600;margin-top:6px;transition:opacity var(--tx)}
+.auth-btn:hover{opacity:.9}
+.auth-btn:disabled{opacity:.5;cursor:default}
+.auth-toggle{text-align:center;font-size:13px;color:var(--t3);margin-top:18px}
+.auth-toggle a{color:var(--accent,#0B41CD);cursor:pointer;font-weight:500}
+.auth-err{font-size:12.5px;color:#DC2626;margin-top:10px;min-height:16px}
+
+/* ─── CONVERSATIONS DRAWER ─────────────────────────────────────── */
+.drawer-scrim{position:fixed;inset:0;z-index:1500;background:rgba(15,25,35,.35);
+  opacity:0;visibility:hidden;transition:opacity .2s,visibility .2s}
+.drawer-scrim.show{opacity:1;visibility:visible}
+.drawer{position:fixed;top:0;left:0;bottom:0;z-index:1600;width:300px;max-width:84vw;
+  background:var(--surface);border-right:1px solid var(--border);transform:translateX(-100%);
+  transition:transform .22s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column}
+.drawer.show{transform:translateX(0)}
+.drawer-hdr{display:flex;align-items:center;justify-content:space-between;padding:16px 16px 12px;
+  border-bottom:1px solid var(--border)}
+.drawer-hdr h3{font-size:14px;font-weight:600;color:var(--t1)}
+.drawer-new{display:flex;align-items:center;gap:6px;padding:8px 12px;margin:12px;border:1px dashed var(--border-2);
+  border-radius:var(--r-lg);font-size:13px;font-weight:500;color:var(--t2);justify-content:center;transition:all var(--tx)}
+.drawer-new:hover{background:var(--surface-2);color:var(--t1)}
+.drawer-list{flex:1;overflow-y:auto;padding:0 8px 12px}
+.conv-item{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:var(--r-lg);
+  cursor:pointer;color:var(--t2);font-size:13px;transition:background var(--tx)}
+.conv-item:hover{background:var(--surface-2)}
+.conv-item.active{background:var(--surface-2);color:var(--t1);font-weight:500}
+.conv-title{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.conv-act{opacity:0;color:var(--t4);padding:3px;border-radius:6px;transition:opacity var(--tx),color var(--tx)}
+.conv-item:hover .conv-act{opacity:1}
+.conv-act:hover{color:var(--t1);background:var(--border)}
+.drawer-foot{border-top:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.drawer-user{font-size:12.5px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.drawer-logout{font-size:12.5px;color:var(--t3);font-weight:500;white-space:nowrap}
+.drawer-logout:hover{color:#DC2626}
 </style>
 </head>
 <body>
 
+<!-- AUTH OVERLAY -->
+<div class="auth-overlay" id="authOverlay" role="dialog" aria-modal="true" aria-label="Sign in">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="hdr-mark">R</div>
+      <span class="auth-title">Roche Scientific AI</span>
+    </div>
+    <div class="auth-sub" id="authSub">Sign in to your account</div>
+    <div class="auth-field" id="authNameField" style="display:none">
+      <label for="authName">Name</label>
+      <input type="text" id="authName" autocomplete="name" placeholder="Dr. Jane Smith">
+    </div>
+    <div class="auth-field">
+      <label for="authEmail">Email</label>
+      <input type="email" id="authEmail" autocomplete="email" placeholder="you@roche.com">
+    </div>
+    <div class="auth-field">
+      <label for="authPassword">Password</label>
+      <input type="password" id="authPassword" autocomplete="current-password" placeholder="••••••••">
+    </div>
+    <button class="auth-btn" id="authSubmit" onclick="submitAuth()">Sign in</button>
+    <div class="auth-err" id="authErr" role="alert"></div>
+    <div class="auth-toggle" id="authToggle">
+      No account? <a onclick="setAuthMode('register')">Create one</a>
+    </div>
+  </div>
+</div>
+
+<!-- CONVERSATIONS DRAWER -->
+<div class="drawer-scrim" id="drawerScrim" onclick="closeDrawer()"></div>
+<aside class="drawer" id="drawer" aria-label="Conversations">
+  <div class="drawer-hdr">
+    <h3>Conversations</h3>
+    <button class="hdr-btn" onclick="closeDrawer()" aria-label="Close">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <button class="drawer-new" onclick="newConversation()">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    New conversation
+  </button>
+  <div class="drawer-list" id="convList"></div>
+  <div class="drawer-foot">
+    <span class="drawer-user" id="drawerUser"></span>
+    <button class="drawer-logout" onclick="logout()">Sign out</button>
+  </div>
+</aside>
+
 <!-- HEADER -->
 <header class="hdr" role="banner">
+  <button class="hdr-btn" id="drawerBtn" title="Conversations" aria-label="Conversations" onclick="openDrawer()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+  </button>
   <a href="/" class="hdr-logo" aria-label="Roche Scientific AI">
     <div class="hdr-mark" aria-hidden="true">R</div>
     <span class="hdr-name">Roche <em>Scientific AI</em></span>
@@ -578,52 +681,236 @@ const $msgs   = document.getElementById('messages');
 const $input  = document.getElementById('msgInput');
 const $send   = document.getElementById('sendBtn');
 
+let currentUser = null;
+let authMode = 'login';
+let currentSessions = [];
+
 /* ─── BOOT ───────────────────────────────────────────────────── */
 async function init() {
-  // Theme
   if (localStorage.getItem(SK_DARK) === '1') applyDark(true);
+  window.addEventListener('scroll', onScroll, { passive: true });
 
-  messages = JSON.parse(localStorage.getItem(SK_MSGS) || '[]');
-  pinned   = JSON.parse(localStorage.getItem(SK_PIN)  || '[]');
-  sessionId = localStorage.getItem(SK_SID);
-  if (!sessionId) await createSession();
+  if (await checkAuth()) {
+    await bootApp();
+  } else {
+    setAuthMode('login');
+    showAuth();
+  }
+}
 
-  // Restore draft
+async function checkAuth() {
+  try {
+    const r = await fetch('/api/auth/me');
+    if (!r.ok) return false;
+    currentUser = await r.json();
+    return true;
+  } catch { return false; }
+}
+
+async function bootApp() {
+  hideAuth();
+  document.getElementById('drawerUser').textContent =
+    currentUser.display_name || currentUser.email;
+
+  await loadConversations();
+
+  // Resume the last-open conversation if it still belongs to this user,
+  // else the newest, else start a fresh one.
+  let active = localStorage.getItem(SK_SID);
+  if (!currentSessions.some(s => s.id === active)) active = currentSessions[0]?.id || null;
+  if (!active) {
+    const s = await createSession();
+    active = s && s.id;
+    await loadConversations();
+  }
+  if (active) await openConversation(active);
+
   const draft = localStorage.getItem(SK_DRAFT);
   if (draft) { $input.value = draft; autoResize($input); $send.disabled = false; }
-
   updateTopPad();
   refreshPinnedStrip();
+}
+
+/* ─── AUTH ───────────────────────────────────────────────────── */
+function showAuth() { document.getElementById('authOverlay').classList.add('show'); }
+function hideAuth() { document.getElementById('authOverlay').classList.remove('show'); }
+
+function setAuthMode(mode) {
+  authMode = mode;
+  const reg = mode === 'register';
+  document.getElementById('authSub').textContent = reg ? 'Create your account' : 'Sign in to your account';
+  document.getElementById('authNameField').style.display = reg ? 'block' : 'none';
+  document.getElementById('authSubmit').textContent = reg ? 'Create account' : 'Sign in';
+  document.getElementById('authPassword').autocomplete = reg ? 'new-password' : 'current-password';
+  document.getElementById('authToggle').innerHTML = reg
+    ? `Already have an account? <a onclick="setAuthMode('login')">Sign in</a>`
+    : `No account? <a onclick="setAuthMode('register')">Create one</a>`;
+  document.getElementById('authErr').textContent = '';
+}
+
+async function submitAuth() {
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  const name = document.getElementById('authName').value.trim();
+  const errEl = document.getElementById('authErr');
+  const btn = document.getElementById('authSubmit');
+  errEl.textContent = '';
+  if (!email || !password) { errEl.textContent = 'Email and password are required.'; return; }
+
+  btn.disabled = true;
+  try {
+    const path = authMode === 'register' ? '/api/auth/register' : '/api/auth/login';
+    const body = authMode === 'register'
+      ? { email, password, display_name: name || null }
+      : { email, password };
+    const r = await fetch(path, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      errEl.textContent = d.detail || 'Something went wrong. Please try again.';
+      btn.disabled = false;
+      return;
+    }
+    currentUser = await r.json();
+    localStorage.removeItem(SK_SID);   // fresh login: don't reuse a stale pointer
+    document.getElementById('authPassword').value = '';
+    await bootApp();
+  } catch {
+    errEl.textContent = 'Could not reach the server. Please try again.';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function logout() {
+  try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
+  currentUser = null; sessionId = null; messages = []; currentSessions = [];
+  localStorage.removeItem(SK_SID); localStorage.removeItem(SK_MSGS); localStorage.removeItem(SK_DRAFT);
+  closeDrawer();
+  $msgs.innerHTML = '';
+  setAuthMode('login');
+  showAuth();
+}
+
+/* ─── CONVERSATIONS ──────────────────────────────────────────── */
+async function createSession(title) {
+  try {
+    const r = await fetch('/api/sessions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(title ? { title } : {}),
+    });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
+async function loadConversations() {
+  try {
+    const r = await fetch('/api/sessions');
+    currentSessions = r.ok ? await r.json() : [];
+  } catch { currentSessions = []; }
+  renderConvList();
+}
+
+function renderConvList() {
+  const el = document.getElementById('convList');
+  el.innerHTML = '';
+  if (!currentSessions.length) {
+    el.innerHTML = '<div style="padding:14px;color:var(--t4);font-size:12.5px">No conversations yet.</div>';
+    return;
+  }
+  currentSessions.forEach(s => {
+    const item = document.createElement('div');
+    item.className = 'conv-item' + (s.id === sessionId ? ' active' : '');
+    item.innerHTML = `
+      <span class="conv-title">${esc(s.title || 'New conversation')}</span>
+      <button class="conv-act" title="Rename" aria-label="Rename"
+        onclick="event.stopPropagation();renameConversation('${s.id}')">✎</button>
+      <button class="conv-act" title="Delete" aria-label="Delete"
+        onclick="event.stopPropagation();deleteConversation('${s.id}')">🗑</button>`;
+    item.onclick = () => { openConversation(s.id); closeDrawer(); };
+    el.appendChild(item);
+  });
+}
+
+async function loadMessages(id) {
+  try {
+    const r = await fetch(`/api/sessions/${id}/messages`);
+    if (!r.ok) return [];
+    const rows = await r.json();
+    return rows.map(t => ({
+      role: t.role === 'assistant' ? 'ai' : 'user',
+      content: t.content,
+      ts: Date.parse(t.created_at) || Date.now(),
+      type: 'question',
+      language: t.language,
+      citations: [],
+    }));
+  } catch { return []; }
+}
+
+async function openConversation(id) {
+  sessionId = id;
+  localStorage.setItem(SK_SID, id);
+  histIdx = -1;
+  messages = await loadMessages(id);
+  $msgs.innerHTML = '';
+
+  const sess = currentSessions.find(s => s.id === id);
+  const titleEl = document.getElementById('convTitle');
+  if (titleEl) titleEl.textContent = sess?.title || '';
 
   if (!messages.length) {
     renderWelcome();
   } else {
-    // Restore title from history
-    const firstUser = messages.find(m => m.role === 'user');
-    if (firstUser) {
-      const el = document.getElementById('convTitle');
-      if (el) el.textContent = firstUser.content.length > 40 ? firstUser.content.slice(0,38)+'…' : firstUser.content;
-    }
-    // Shimmer brief fade-in
-    $msgs.style.opacity = '0';
     messages.forEach(m => renderMsg(m, false));
-    requestAnimationFrame(() => {
-      $msgs.style.transition = 'opacity .4s';
-      $msgs.style.opacity = '1';
-    });
-    setTimeout(scrollBottom, 200);
+    setTimeout(scrollBottom, 120);
   }
-
-  window.addEventListener('scroll', onScroll, { passive: true });
+  renderConvList();   // refresh active highlight
 }
 
-async function createSession() {
-  try {
-    const r = await fetch('/api/sessions', { method: 'POST' });
-    const d = await r.json();
-    sessionId = d.session_id;
-  } catch { sessionId = crypto.randomUUID(); }
-  localStorage.setItem(SK_SID, sessionId);
+async function renameConversation(id) {
+  const cur = currentSessions.find(s => s.id === id);
+  const next = prompt('Rename conversation', cur?.title || '');
+  if (next === null) return;
+  const title = next.trim();
+  if (!title) return;
+  await fetch(`/api/sessions/${id}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  });
+  await loadConversations();
+  if (id === sessionId) {
+    const el = document.getElementById('convTitle');
+    if (el) el.textContent = title;
+  }
+}
+
+async function deleteConversation(id) {
+  if (!confirm('Delete this conversation? This cannot be undone.')) return;
+  await fetch(`/api/sessions/${id}`, { method: 'DELETE' });
+  await loadConversations();
+  if (id === sessionId) {
+    const next = currentSessions[0]?.id;
+    if (next) { await openConversation(next); }
+    else {
+      const s = await createSession();
+      await loadConversations();
+      if (s) await openConversation(s.id);
+    }
+  }
+}
+
+/* ─── DRAWER ─────────────────────────────────────────────────── */
+function openDrawer() {
+  loadConversations();
+  document.getElementById('drawer').classList.add('show');
+  document.getElementById('drawerScrim').classList.add('show');
+}
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('show');
+  document.getElementById('drawerScrim').classList.remove('show');
 }
 
 /* ─── WELCOME ────────────────────────────────────────────────── */
@@ -843,6 +1130,7 @@ async function sendMessage(text) {
           }
           persist();
           handles?.finalize();
+          loadConversations();   // pick up a server-set title for new chats
           break outer;
         } else if (ev.event === 'error') {
           errCat = (ev.data && ev.data.category) || 'internal';
@@ -1247,12 +1535,11 @@ $input.addEventListener('keydown', e => {
 function autoResize(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 200) + 'px'; }
 
 async function newConversation() {
-  messages = []; pinned = [];
-  persist(); localStorage.removeItem(SK_SID); localStorage.removeItem(SK_PIN); localStorage.removeItem(SK_DRAFT);
-  sessionId = null; $msgs.innerHTML = ''; histIdx = -1;
-  const titleEl = document.getElementById('convTitle'); if (titleEl) titleEl.textContent = '';
-  refreshPinnedStrip(); updateTopPad();
-  await createSession(); renderWelcome();
+  const s = await createSession();
+  if (!s) return;
+  await loadConversations();
+  await openConversation(s.id);
+  closeDrawer();
 }
 
 document.getElementById('btnNew').addEventListener('click', newConversation);
