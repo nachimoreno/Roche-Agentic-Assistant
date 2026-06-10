@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -27,16 +28,19 @@ from uuid import UUID
 sys.path.insert(0, str(Path(__file__).parent))
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.middleware.sessions import SessionMiddleware
 
-from db import new_id
+from auth import get_current_user, hash_password, verify_password
+from db import User, new_id
 from llm import LLMAuthError
 from logging_setup import setup_logging
-from main import build_assistant
+from main import build_assistant, build_engine
 from orchestrator import Assistant, StreamDone, StreamMeta, StreamToken
+from repositories import EmailTakenError, UserRepository
 from settings import Settings
 
 load_dotenv()
@@ -52,8 +56,10 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    engine = build_engine(_settings)
+    app.state.users = UserRepository(engine)
     try:
-        app.state.assistant = build_assistant(_settings)
+        app.state.assistant = build_assistant(_settings, engine=engine)
     except LLMAuthError:
         logger.error(
             "startup.auth.failed: Groq rejected the API key. Fix GROQ_API_KEY "
@@ -64,6 +70,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Roche Scientist Assistant", lifespan=lifespan)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=_settings.session_secret,
+    session_cookie=_settings.session_cookie,
+    https_only=_settings.session_https_only,
+    same_site="lax",
+)
 
 _static = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(_static)), name="static")
@@ -97,6 +110,82 @@ class ChatResponse(BaseModel):
 
 class SessionOut(BaseModel):
     session_id: str
+
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    display_name: Optional[str] = None
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class UserOut(BaseModel):
+    id: str
+    email: str
+    display_name: Optional[str] = None
+
+
+def _user_out(user: User) -> UserOut:
+    return UserOut(id=str(user.id), email=user.email, display_name=user.display_name)
+
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+# ---------------------------------------------------------------------------
+# Auth endpoints
+# ---------------------------------------------------------------------------
+
+@app.post("/api/auth/register", response_model=UserOut, status_code=201)
+def register(req: RegisterRequest, request: Request):
+    """Create an account and start a session (auto-login)."""
+    if not _EMAIL_RE.match(req.email.strip()):
+        raise HTTPException(status_code=422, detail="Please provide a valid email address.")
+    if len(req.password) < _settings.min_password_length:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Password must be at least {_settings.min_password_length} characters.",
+        )
+
+    users: UserRepository = request.app.state.users
+    try:
+        user = users.create(
+            email=req.email,
+            password_hash=hash_password(req.password),
+            display_name=req.display_name,
+        )
+    except EmailTakenError:
+        raise HTTPException(status_code=409, detail="An account with that email already exists.")
+
+    request.session["user_id"] = str(user.id)
+    return _user_out(user)
+
+
+@app.post("/api/auth/login", response_model=UserOut)
+def login(req: LoginRequest, request: Request):
+    users: UserRepository = request.app.state.users
+    user = users.get_by_email(req.email)
+    # Generic error + always-run verify avoids leaking which emails exist.
+    if user is None or not verify_password(user.password_hash, req.password):
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+
+    request.session["user_id"] = str(user.id)
+    return _user_out(user)
+
+
+@app.post("/api/auth/logout")
+def logout(request: Request):
+    request.session.clear()
+    return {"ok": True}
+
+
+@app.get("/api/auth/me", response_model=UserOut)
+def me(user: User = Depends(get_current_user)):
+    return _user_out(user)
 
 
 # ---------------------------------------------------------------------------

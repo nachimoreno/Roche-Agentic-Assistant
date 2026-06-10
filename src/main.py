@@ -12,8 +12,10 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
 from dotenv import load_dotenv
+from sqlalchemy import Engine
 
 from agent import RAGAgent
 from conversation_layer import ConversationLayer
@@ -56,14 +58,23 @@ def build_source(settings: Settings) -> DocumentSource:
     return LocalMarkdownSource(path=settings.docs_path)
 
 
-def build_assistant(settings: Settings) -> Assistant:
-    # Ensure data directory exists for SQLite.
+def build_engine(settings: Settings) -> Engine:
+    """Create the DB engine and ensure the schema exists.
+
+    Exposed so the HTTP layer can share one engine across the assistant and
+    the auth/user repositories rather than opening a second connection pool.
+    """
     if settings.database_url.startswith("sqlite:///"):
         db_path = Path(settings.database_url.removeprefix("sqlite:///"))
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
     engine = make_engine(settings.database_url)
     create_all(engine)
+    return engine
+
+
+def build_assistant(settings: Settings, engine: Optional[Engine] = None) -> Assistant:
+    engine = engine or build_engine(settings)
 
     llm = GroqClient(api_key=settings.groq_api_key, model=settings.model_name)
     # Fail fast: reject a bad/missing key now, before the slow ingest below,

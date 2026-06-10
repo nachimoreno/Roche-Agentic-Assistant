@@ -52,6 +52,14 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
 
+    # ---- Auth ---------------------------------------------------------
+    # Signs the session cookie. MUST be overridden in production.
+    session_secret: str = "dev-insecure-change-me"
+    session_cookie: str = "roche_session"
+    # Only send the cookie over HTTPS — set true in production.
+    session_https_only: bool = False
+    min_password_length: int = 8
+
     # ---- Observability ------------------------------------------------
     log_level: str = "INFO"
     log_format: Literal["json", "text"] = "text"

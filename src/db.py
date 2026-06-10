@@ -42,10 +42,22 @@ def utcnow() -> datetime:
 # Schema
 # ---------------------------------------------------------------------------
 
+class User(SQLModel, table=True):
+    id: UUID = Field(default_factory=new_id, primary_key=True)
+    email: str = Field(index=True, unique=True)         # stored lowercased
+    display_name: Optional[str] = Field(default=None)
+    password_hash: str
+    tenant_id: Optional[UUID] = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    deleted_at: Optional[datetime] = Field(default=None, index=True)
+
+
 class Session(SQLModel, table=True):
     id: UUID = Field(default_factory=new_id, primary_key=True)
     tenant_id: Optional[UUID] = Field(default=None, index=True)
+    # Opaque owner id (str(User.id) today; a future SSO subject drops in unchanged).
     user_id: Optional[str] = Field(default=None, index=True)
+    title: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, index=True)
     deleted_at: Optional[datetime] = Field(default=None, index=True)
 

@@ -18,12 +18,66 @@ from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import Engine
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session as DbSession, select
 
-from db import FeedbackEntry, Session, Turn, utcnow
+from db import FeedbackEntry, Session, Turn, User, utcnow
 
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# UserRepository
+# ---------------------------------------------------------------------------
+
+class EmailTakenError(ValueError):
+    """Raised when creating a user whose email already exists."""
+
+
+class UserRepository:
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+
+    @staticmethod
+    def _norm(email: str) -> str:
+        return email.strip().lower()
+
+    def create(
+        self,
+        *,
+        email: str,
+        password_hash: str,
+        display_name: Optional[str] = None,
+        tenant_id: Optional[UUID] = None,
+    ) -> User:
+        user = User(
+            email=self._norm(email),
+            password_hash=password_hash,
+            display_name=display_name,
+            tenant_id=tenant_id,
+        )
+        try:
+            with DbSession(self._engine) as db:
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+        except IntegrityError as exc:
+            raise EmailTakenError(email) from exc
+        logger.info("user.created", extra={"user_id": str(user.id)})
+        return user
+
+    def get(self, id: UUID) -> Optional[User]:
+        with DbSession(self._engine) as db:
+            return db.get(User, id)
+
+    def get_by_email(self, email: str) -> Optional[User]:
+        with DbSession(self._engine) as db:
+            stmt = select(User).where(
+                User.email == self._norm(email),
+                User.deleted_at.is_(None),  # type: ignore[union-attr]
+            )
+            return db.exec(stmt).first()
 
 
 # ---------------------------------------------------------------------------
