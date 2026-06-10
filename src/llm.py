@@ -14,10 +14,14 @@ import json
 import logging
 from typing import Any, Iterator, Protocol, Sequence
 
-from groq import Groq
+from groq import AuthenticationError, Groq
 
 
 logger = logging.getLogger(__name__)
+
+
+class LLMAuthError(RuntimeError):
+    """Raised when the LLM provider rejects our credentials."""
 
 
 class LLMClient(Protocol):
@@ -48,6 +52,15 @@ class LLMClient(Protocol):
         Unlike `complete_structured`, the caller is responsible for any
         output structure via the system prompt (the response is not forced
         into JSON mode, so tokens can be streamed as they arrive).
+        """
+        ...
+
+    def check_auth(self) -> None:
+        """Verify the provider accepts our credentials.
+
+        Should make a cheap call and raise `LLMAuthError` if the credentials
+        are rejected, so the app can fail fast at startup instead of on the
+        first user request.
         """
         ...
 
@@ -124,3 +137,12 @@ class GroqClient:
                 n += len(delta)
                 yield delta
         logger.debug("llm.stream.done", extra={"model": self._model, "bytes": n})
+
+    def check_auth(self) -> None:
+        try:
+            self._client.models.list()
+        except AuthenticationError as exc:
+            raise LLMAuthError(
+                "Groq rejected the API key (401). Set a valid GROQ_API_KEY "
+                "in .env (one key, no trailing characters) and restart."
+            ) from exc

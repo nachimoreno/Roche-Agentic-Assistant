@@ -804,17 +804,17 @@ async function sendMessage(text) {
   }
   showThinking(); scrollBottom();
 
-  let aiMsg = null, handles = null;
+  let aiMsg = null, handles = null, errCat = null;
   try {
     const r = await fetch(`/api/sessions/${sessionId}/chat/stream`, {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ message: text }),
     });
-    if (!r.ok || !r.body) throw new Error(r.status);
+    if (!r.ok || !r.body) { errCat = 'connection'; throw new Error(r.status); }
 
     const reader  = r.body.getReader();
     const decoder = new TextDecoder();
-    let buf = '', streamErr = false;
+    let buf = '';
 
     outer:
     while (true) {
@@ -845,24 +845,44 @@ async function sendMessage(text) {
           handles?.finalize();
           break outer;
         } else if (ev.event === 'error') {
-          streamErr = true;
+          errCat = (ev.data && ev.data.category) || 'internal';
           break outer;
         }
       }
     }
-    if (streamErr) throw new Error('stream-error');
+    if (errCat) throw new Error('stream-error');
   } catch {
     hideThinking();
-    if (handles && aiMsg) {
-      // Partial answer already on screen — finalize what we have.
+    if (handles && aiMsg && aiMsg.content) {
+      // Partial answer already on screen — keep what we streamed.
       delete aiMsg.live; persist(); handles.finalize();
     } else {
-      const errMsg = { role:'ai', content:'There was a problem reaching the scientific knowledge base. Please check your connection and try again.', ts:Date.now(), type:'error', citations:[] };
+      const content = STREAM_ERR_MSG[errCat] || STREAM_ERR_MSG.connection;
+      const errMsg = { role:'ai', content, ts:Date.now(), type:'error', citations:[] };
       messages.push(errMsg); persist(); renderAi(errMsg, false);
     }
   } finally {
     busy = false; $send.disabled = !$input.value.trim();
   }
+}
+
+/* User-facing copy per stream error category (see api._error_category). */
+const STREAM_ERR_MSG = {
+  auth:       'The assistant isn’t configured correctly (its API key was rejected). Please let an administrator know.',
+  rate_limit: 'The assistant is handling a lot of requests right now. Please wait a moment and try again.',
+  internal:   'Something went wrong while generating the response. Please try again.',
+  connection: 'There was a problem reaching the scientific knowledge base. Please check your connection and try again.',
+};
+
+/* Parse one SSE frame ("event: x\ndata: {...}") into {event, data}. */
+function parseSSEFrame(frame) {
+  let event = 'message', data = '';
+  for (const line of frame.split('\n')) {
+    if (line.startsWith('event:'))     event = line.slice(6).trim();
+    else if (line.startsWith('data:')) data += line.slice(5).trim();
+  }
+  if (!data) return null;
+  try { return { event, data: JSON.parse(data) }; } catch { return null; }
 }
 
 /* Parse one SSE frame ("event: x\ndata: {...}") into {event, data}. */

@@ -33,6 +33,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from db import new_id
+from llm import LLMAuthError
 from logging_setup import setup_logging
 from main import build_assistant
 from orchestrator import Assistant, StreamDone, StreamMeta, StreamToken
@@ -51,7 +52,14 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.assistant = build_assistant(_settings)
+    try:
+        app.state.assistant = build_assistant(_settings)
+    except LLMAuthError:
+        logger.error(
+            "startup.auth.failed: Groq rejected the API key. Fix GROQ_API_KEY "
+            "in .env (a single valid key) and restart the server."
+        )
+        raise
     yield
 
 
@@ -136,6 +144,21 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
+def _error_category(exc: Exception) -> tuple[str, str]:
+    """Map an exception to a (category, client-safe detail) pair.
+
+    Categorized by HTTP status when the provider exposes one (groq's API
+    errors carry `status_code`), so the UI can distinguish a misconfigured
+    assistant from a transient hiccup. Never returns internal detail text.
+    """
+    status = getattr(exc, "status_code", None)
+    if status in (401, 403):
+        return "auth", "The assistant is not configured correctly (authentication failed)."
+    if status == 429:
+        return "rate_limit", "The assistant is busy right now. Please wait a moment and try again."
+    return "internal", "Internal error handling the request."
+
+
 @app.post("/api/sessions/{session_id}/chat/stream")
 def chat_stream(session_id: str, req: ChatRequest, request: Request):
     """Same as /chat, but streams the reply token-by-token over SSE.
@@ -169,9 +192,13 @@ def chat_stream(session_id: str, req: ChatRequest, request: Request):
                             for c in ev.citations
                         ],
                     })
-        except Exception:
-            logger.exception("api.chat_stream.failed", extra={"session_id": str(sid)})
-            yield _sse("error", {"detail": "Internal error handling the request."})
+        except Exception as exc:
+            category, detail = _error_category(exc)
+            logger.exception(
+                "api.chat_stream.failed",
+                extra={"session_id": str(sid), "category": category},
+            )
+            yield _sse("error", {"category": category, "detail": detail})
 
     return StreamingResponse(
         event_stream(),

@@ -66,6 +66,11 @@ def build_assistant(settings: Settings) -> Assistant:
     create_all(engine)
 
     llm = GroqClient(api_key=settings.groq_api_key, model=settings.model_name)
+    # Fail fast: reject a bad/missing key now, before the slow ingest below,
+    # rather than on the user's first message.
+    llm.check_auth()
+    logger.info("startup.auth.ok", extra={"model": settings.model_name})
+
     embedder = FastEmbedProvider(model_name=settings.embedding_model)
     vector_store = ChromaVectorStore(
         path=settings.chroma_path,

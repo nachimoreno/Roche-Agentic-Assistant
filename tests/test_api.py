@@ -193,13 +193,21 @@ def test_dashboard_route_is_gone(client):
 # Streaming chat (SSE)
 # ---------------------------------------------------------------------------
 
-class FakeStreamingAssistant:
-    """Yields canned stream events; or raises mid-stream after `meta`."""
+class _StatusError(Exception):
+    """Stand-in for a provider error carrying an HTTP status_code."""
 
-    def __init__(self, tokens, citations, *, raise_after_meta=False):
+    def __init__(self, status_code, message="boom"):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class FakeStreamingAssistant:
+    """Yields canned stream events; or raises `error` mid-stream after meta."""
+
+    def __init__(self, tokens, citations, *, error: Exception | None = None):
         self._tokens = tokens
         self._citations = citations
-        self._raise = raise_after_meta
+        self._error = error
         self.calls: list[tuple] = []
 
     def handle_stream(self, session_id, message, **kwargs):
@@ -207,8 +215,8 @@ class FakeStreamingAssistant:
         yield StreamMeta(
             analysis=AnalysisResult(language="english", type="question", emotion=None)
         )
-        if self._raise:
-            raise RuntimeError("secret: token=abc123")
+        if self._error is not None:
+            raise self._error
         for t in self._tokens:
             yield StreamToken(text=t)
         yield StreamDone(text="".join(self._tokens), citations=self._citations)
@@ -259,8 +267,8 @@ def test_stream_rejects_malformed_session_id(client):
     assert resp.status_code == 422
 
 
-def test_stream_error_emits_error_event_without_leaking(client):
-    _inject(FakeStreamingAssistant(["x"], [], raise_after_meta=True))
+def test_stream_error_emits_internal_category_without_leaking(client):
+    _inject(FakeStreamingAssistant(["x"], [], error=RuntimeError("secret token=abc123")))
     sid = str(UUID(int=11))
 
     resp = client.post(f"/api/sessions/{sid}/chat/stream", json={"message": "hi"})
@@ -268,5 +276,34 @@ def test_stream_error_emits_error_event_without_leaking(client):
     assert resp.status_code == 200
     frames = _parse_sse(resp.text)
     assert frames[-1][0] == "error"
+    assert frames[-1][1]["category"] == "internal"
     assert frames[-1][1]["detail"] == "Internal error handling the request."
     assert "abc123" not in resp.text
+
+
+def test_stream_error_categorizes_auth_failure(client):
+    _inject(FakeStreamingAssistant(["x"], [], error=_StatusError(401, "Invalid API Key")))
+    sid = str(UUID(int=12))
+
+    resp = client.post(f"/api/sessions/{sid}/chat/stream", json={"message": "hi"})
+    frames = _parse_sse(resp.text)
+    assert frames[-1][0] == "error"
+    assert frames[-1][1]["category"] == "auth"
+    assert "authentication" in frames[-1][1]["detail"].lower()
+    assert "Invalid API Key" not in resp.text
+
+
+# ---------------------------------------------------------------------------
+# _error_category
+# ---------------------------------------------------------------------------
+
+def test_error_category_maps_status_codes():
+    assert api._error_category(_StatusError(401))[0] == "auth"
+    assert api._error_category(_StatusError(403))[0] == "auth"
+    assert api._error_category(_StatusError(429))[0] == "rate_limit"
+
+
+def test_error_category_defaults_to_internal():
+    cat, detail = api._error_category(RuntimeError("anything"))
+    assert cat == "internal"
+    assert detail == "Internal error handling the request."
