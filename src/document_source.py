@@ -36,6 +36,31 @@ class DocumentSource(Protocol):
     def list_documents(self) -> Iterable[SourceDocument]: ...
 
 
+class CompositeSource:
+    """A `DocumentSource` that chains several sources into one stream.
+
+    Used for `document_source="all"` — e.g. local markdown *and* Google Drive
+    ingested together. Each child yields the same `SourceDocument` shape, so
+    downstream consumers stay source-agnostic.
+
+    `SourceDocument.id` is namespaced per source (filename vs. Drive file id),
+    so documents from different sources never collide in the vector store. A
+    failure in one source is logged and skipped rather than aborting the whole
+    ingest — a Drive outage shouldn't take local docs offline.
+    """
+
+    def __init__(self, sources: Iterable[DocumentSource]) -> None:
+        self._sources = list(sources)
+
+    def list_documents(self) -> Iterator[SourceDocument]:
+        for source in self._sources:
+            name = type(source).__name__
+            try:
+                yield from source.list_documents()
+            except Exception:
+                logger.exception("source.failed", extra={"source": name})
+
+
 class LocalMarkdownSource:
     """Default `DocumentSource` reading `.md` files from a local directory."""
 

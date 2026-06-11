@@ -20,7 +20,7 @@ from sqlalchemy import Engine
 from agent import RAGAgent
 from conversation_layer import ConversationLayer
 from db import create_all, make_engine, new_id
-from document_source import DocumentSource, LocalMarkdownSource
+from document_source import CompositeSource, DocumentSource, LocalMarkdownSource
 from google_drive_source import GoogleDriveSource
 from embeddings import FastEmbedProvider
 from llm import GroqClient
@@ -35,27 +35,48 @@ from vector_store import ChromaVectorStore
 logger = logging.getLogger(__name__)
 
 
-def build_source(settings: Settings) -> DocumentSource:
-    """Select the DocumentSource to ingest from based on settings.
+def build_drive_source(settings: Settings) -> GoogleDriveSource:
+    """Construct the Google Drive source from settings (caller checks config)."""
+    return GoogleDriveSource(
+        folder_id=settings.drive_folder_id,
+        credentials_path=(
+            settings.google_service_account_json
+            or settings.google_oauth_credentials
+        ),
+        recursive=settings.drive_recursive,
+    )
 
-    Both implementations yield the same `SourceDocument` shape, so nothing
-    downstream of here cares which one is used.
+
+def build_source(settings: Settings) -> DocumentSource:
+    """Select the DocumentSource(s) to ingest from based on settings.
+
+    Every implementation yields the same `SourceDocument` shape, so nothing
+    downstream of here cares which one is used. "all" combines local markdown
+    with Google Drive via `CompositeSource`, including Drive only when it's
+    configured so the default degrades cleanly to local-only.
     """
+    local = LocalMarkdownSource(path=settings.docs_path)
+
+    if settings.document_source == "local":
+        return local
+
     if settings.document_source == "google_drive":
         if not settings.drive_folder_id:
             raise ValueError(
                 "document_source='google_drive' requires drive_folder_id "
                 "(set DRIVE_FOLDER_ID in .env)."
             )
-        return GoogleDriveSource(
-            folder_id=settings.drive_folder_id,
-            credentials_path=(
-                settings.google_service_account_json
-                or settings.google_oauth_credentials
-            ),
-            recursive=settings.drive_recursive,
-        )
-    return LocalMarkdownSource(path=settings.docs_path)
+        return build_drive_source(settings)
+
+    # "all": local always, plus Drive when configured.
+    if settings.drive_folder_id:
+        return CompositeSource([local, build_drive_source(settings)])
+
+    logger.warning(
+        "source.all.drive_unconfigured",
+        extra={"detail": "document_source='all' but no drive_folder_id; using local only"},
+    )
+    return local
 
 
 def build_engine(settings: Settings) -> Engine:

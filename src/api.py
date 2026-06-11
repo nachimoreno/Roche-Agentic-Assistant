@@ -38,7 +38,7 @@ from auth import get_current_user, hash_password, verify_password
 from db import User
 from llm import LLMAuthError
 from logging_setup import setup_logging
-from main import build_assistant, build_engine
+from main import build_assistant, build_drive_source, build_engine
 from orchestrator import Assistant, StreamDone, StreamMeta, StreamToken
 from repositories import EmailTakenError, SessionRepository, UserRepository
 from settings import Settings
@@ -53,12 +53,61 @@ setup_logging(
 
 logger = logging.getLogger(__name__)
 
+# Application logs are routed to a file (settings.log_file) to keep the console
+# clean. Startup status — notably whether Google Drive connected — still needs
+# to reach the operator's terminal, so it gets a dedicated stdout logger.
+# propagate=True keeps a copy in the log file too, via the root handler.
+_console = logging.getLogger("roche.startup")
+if not _console.handlers:
+    _handler = logging.StreamHandler(sys.stdout)
+    _handler.setFormatter(logging.Formatter("%(message)s"))
+    _console.addHandler(_handler)
+    _console.setLevel(logging.INFO)
+
+
+def _report_drive_status(settings: Settings) -> None:
+    """Probe the Google Drive integration at startup and report to the console.
+
+    Logs whether Drive is disabled, skipped, connected, or failed — and on
+    failure, why. This is informational only: `CompositeSource` keeps ingestion
+    running on local docs even when Drive is down, so this never blocks startup.
+    """
+    if settings.document_source == "local":
+        _console.info("google_drive: disabled (document_source='local')")
+        return
+
+    if not settings.drive_folder_id:
+        _console.info(
+            "google_drive: skipped — document_source=%r but DRIVE_FOLDER_ID is "
+            "not set; serving local docs only.",
+            settings.document_source,
+        )
+        return
+
+    try:
+        count = build_drive_source(settings).check_connection()
+    except Exception as exc:
+        _console.error(
+            "google_drive: FAILED to connect to folder %s — %s: %s",
+            settings.drive_folder_id,
+            type(exc).__name__,
+            exc,
+        )
+        return
+
+    _console.info(
+        "google_drive: OK — connected to folder %s (%d+ files visible).",
+        settings.drive_folder_id,
+        count,
+    )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     engine = build_engine(_settings)
     app.state.users = UserRepository(engine)
     app.state.sessions = SessionRepository(engine)
+    _report_drive_status(_settings)
     try:
         app.state.assistant = build_assistant(_settings, engine=engine)
     except LLMAuthError:

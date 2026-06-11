@@ -158,6 +158,24 @@ class GoogleDriveSource:
                 },
             )
 
+    def check_connection(self) -> int:
+        """Cheaply verify the integration is live, for startup health reporting.
+
+        Loads credentials and lists a single page of the target folder. Returns
+        the number of files visible on that page (a lower bound, not a full
+        count). Raises on any failure — missing/invalid credentials, an
+        inaccessible folder, or a network error — so callers can surface *why*.
+        """
+        service = self._get_service()
+        resp = service.files().list(
+            q=f"'{self.folder_id}' in parents and trashed=false",
+            fields="files(id)",
+            pageSize=10,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+        ).execute()
+        return len(resp.get("files", []))
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

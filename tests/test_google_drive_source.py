@@ -171,13 +171,46 @@ class TestGoogleDriveSourceListDocuments:
         assert docs[0].id == "new"
 
 
+class TestCheckConnection:
+    """check_connection() is the startup health probe used by api.py."""
+
+    def test_returns_file_count_on_success(self):
+        src = GoogleDriveSource(folder_id="f", credentials_path=None)
+        service = MagicMock()
+        service.files().list().execute.return_value = {"files": [{"id": "1"}, {"id": "2"}]}
+        src._service = service
+
+        assert src.check_connection() == 2
+
+    def test_propagates_failure_reason(self):
+        src = GoogleDriveSource(folder_id="f", credentials_path=None)
+        service = MagicMock()
+        service.files().list().execute.side_effect = RuntimeError("403 forbidden")
+        src._service = service
+
+        with pytest.raises(RuntimeError, match="403 forbidden"):
+            src.check_connection()
+
+
 # ---------------------------------------------------------------------------
 # Live integration tests — skipped unless credentials present
 # ---------------------------------------------------------------------------
 
+def _live_creds_ready() -> bool:
+    """True only when Drive is fully configured *and* the key file exists.
+
+    Checking the file exists (not just the env var) means a path pointing at a
+    missing key skips these tests instead of erroring with FileNotFoundError.
+    """
+    creds = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON") or os.getenv("GOOGLE_OAUTH_CREDENTIALS")
+    if not creds or not os.getenv("DRIVE_FOLDER_ID"):
+        return False
+    return os.path.isfile(creds)
+
+
 LIVE = pytest.mark.skipif(
-    not os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON") or not os.getenv("DRIVE_FOLDER_ID"),
-    reason="Live Drive tests require GOOGLE_SERVICE_ACCOUNT_JSON + DRIVE_FOLDER_ID env vars",
+    not _live_creds_ready(),
+    reason="Live Drive tests require DRIVE_FOLDER_ID + an existing credentials file",
 )
 
 

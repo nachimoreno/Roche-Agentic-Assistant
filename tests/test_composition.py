@@ -8,21 +8,45 @@ from __future__ import annotations
 
 import pytest
 
-from document_source import LocalMarkdownSource
+from document_source import CompositeSource, LocalMarkdownSource
 from google_drive_source import GoogleDriveSource
 from main import build_source
 from settings import Settings
 
 
 def _settings(**overrides) -> Settings:
-    # groq_api_key is the only required field; supply a dummy.
-    base = {"groq_api_key": "test-key"}
+    # Establish a clean, fully-specified baseline so selection logic is
+    # deterministic regardless of the developer's real .env — conftest calls
+    # load_dotenv(), so Drive credentials there would otherwise bleed into
+    # os.environ and these unit tests. Each test overrides only what it needs.
+    base = {
+        "groq_api_key": "test-key",
+        "drive_folder_id": None,
+        "google_service_account_json": None,
+        "google_oauth_credentials": None,
+    }
     base.update(overrides)
-    return Settings(**base)
+    return Settings(_env_file=None, **base)
 
 
-def test_defaults_to_local_markdown_source():
-    src = build_source(_settings())
+def test_defaults_to_all_with_drive_configured():
+    # Default is now "all": local + Drive combined when Drive is configured.
+    src = build_source(
+        _settings(drive_folder_id="folder-123", google_service_account_json="sa.json")
+    )
+    assert isinstance(src, CompositeSource)
+    kinds = [type(s).__name__ for s in src._sources]
+    assert kinds == ["LocalMarkdownSource", "GoogleDriveSource"]
+
+
+def test_all_without_drive_falls_back_to_local():
+    # "all" but no drive_folder_id → degrades to local-only, no error.
+    src = build_source(_settings(document_source="all", drive_folder_id=None))
+    assert isinstance(src, LocalMarkdownSource)
+
+
+def test_explicit_local_source_selected():
+    src = build_source(_settings(document_source="local"))
     assert isinstance(src, LocalMarkdownSource)
 
 

@@ -39,8 +39,10 @@ class Settings(BaseSettings):
 
     # ---- Document source ----------------------------------------------
     # Which DocumentSource to ingest from. "local" reads markdown from
-    # docs_path; "google_drive" pulls from a Shared Drive folder.
-    document_source: Literal["local", "google_drive"] = "local"
+    # docs_path; "google_drive" pulls from a Shared Drive folder; "all"
+    # ingests from both. "all" only adds Drive when drive_folder_id is set,
+    # so it degrades to local-only if Drive isn't configured.
+    document_source: Literal["local", "google_drive", "all"] = "all"
     docs_path: str = "data/docs"
     # Google Drive (only used when document_source == "google_drive").
     drive_folder_id: Optional[str] = None

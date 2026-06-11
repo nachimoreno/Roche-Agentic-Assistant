@@ -31,6 +31,12 @@ logger = logging.getLogger(__name__)
 _MAX_CHUNK_CHARS = 1200
 _MIN_CHUNK_CHARS = 80
 
+# Bump when chunking logic changes so previously-ingested documents are
+# re-chunked even though their content hash is unchanged. Without this, the
+# manifest's hash check would treat a doc as "unchanged" and keep stale chunks
+# produced by the old logic.
+_CHUNK_SCHEME_VERSION = 2
+
 
 @dataclass
 class IngestReport:
@@ -76,13 +82,18 @@ class DocumentStore:
             content_hash = _hash(doc.content)
             entry = {
                 "hash": content_hash,
+                "scheme": _CHUNK_SCHEME_VERSION,
                 "modified_at": doc.modified_at.isoformat(),
                 "chunk_ids": [],
             }
 
             prior = manifest.get(doc.id)
-            if prior and prior.get("hash") == content_hash:
-                # Unchanged — keep prior chunk IDs in the manifest.
+            if (
+                prior
+                and prior.get("hash") == content_hash
+                and prior.get("scheme") == _CHUNK_SCHEME_VERSION
+            ):
+                # Unchanged content *and* same chunking scheme — keep prior chunks.
                 entry["chunk_ids"] = prior.get("chunk_ids", [])
                 new_manifest[doc.id] = entry
                 continue
@@ -220,21 +231,45 @@ def _split_by_h2(text: str) -> list[tuple[str, str]]:
 def _split_long(text: str, max_chars: int) -> list[str]:
     if len(text) <= max_chars:
         return [text]
-    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    # Break into the smallest natural units we can, then greedily pack them
+    # back up to max_chars. _atomize guarantees every unit is <= max_chars, so
+    # text without blank-line structure (DOCX/PDF-extracted prose) still chunks
+    # properly instead of collapsing into one oversized, un-embeddable blob.
+    units = _atomize(text, max_chars)
     chunks: list[str] = []
     buffer: list[str] = []
     buffer_len = 0
-    for para in paragraphs:
-        if buffer_len + len(para) + 2 > max_chars and buffer:
+    for unit in units:
+        if buffer and buffer_len + len(unit) + 2 > max_chars:
             chunks.append("\n\n".join(buffer))
-            buffer = [para]
-            buffer_len = len(para)
+            buffer = [unit]
+            buffer_len = len(unit)
         else:
-            buffer.append(para)
-            buffer_len += len(para) + 2
+            buffer.append(unit)
+            buffer_len += len(unit) + 2
     if buffer:
         chunks.append("\n\n".join(buffer))
     return chunks
+
+
+def _atomize(segment: str, max_chars: int) -> list[str]:
+    """Break `segment` into units each <= max_chars.
+
+    Splits on the coarsest separator available (blank lines, then single
+    newlines), recursing into pieces that are still too long. A run with no
+    newlines at all is hard-sliced on character count as a last resort.
+    """
+    if len(segment) <= max_chars:
+        return [segment]
+    for sep in ("\n\n", "\n"):
+        if sep in segment:
+            parts = [p.strip() for p in segment.split(sep) if p.strip()]
+            if len(parts) > 1:
+                out: list[str] = []
+                for part in parts:
+                    out.extend(_atomize(part, max_chars))
+                return out
+    return [segment[i : i + max_chars] for i in range(0, len(segment), max_chars)]
 
 
 def _hash(text: str) -> str:

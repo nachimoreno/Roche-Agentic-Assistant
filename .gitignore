@@ -6,6 +6,7 @@
 .env
 .misc/
 credentials/
+secrets/
 
 # Python
 __pycache__/
