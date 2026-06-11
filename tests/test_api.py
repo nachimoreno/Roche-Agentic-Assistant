@@ -111,8 +111,20 @@ def test_create_session_ids_are_unique(client):
     assert a != b
 
 
-def test_append_partial_message_persists_assistant_turn(client):
+def _session_with_pending_user_turn(client) -> str:
+    """Create an owned session and seed an unanswered user turn.
+
+    Mirrors the real abort flow: handle_stream persists the user turn up front,
+    then the stream is abandoned before the assistant turn is written — so at
+    abort time the most recent turn is the user's.
+    """
     sid = client.post("/api/sessions").json()["id"]
+    api.app.state.sessions.append_turn(UUID(sid), role="user", content="A question?")
+    return sid
+
+
+def test_append_partial_message_persists_assistant_turn(client):
+    sid = _session_with_pending_user_turn(client)
     resp = client.post(
         f"/api/sessions/{sid}/messages",
         json={"content": "Partial answer kept after Stop", "language": "english"},
@@ -121,11 +133,11 @@ def test_append_partial_message_persists_assistant_turn(client):
     assert resp.json()["role"] == "assistant"
 
     rows = client.get(f"/api/sessions/{sid}/messages").json()
-    assert [r["content"] for r in rows] == ["Partial answer kept after Stop"]
+    assert [r["content"] for r in rows] == ["A question?", "Partial answer kept after Stop"]
 
 
 def test_append_partial_message_rejects_empty_content(client):
-    sid = client.post("/api/sessions").json()["id"]
+    sid = _session_with_pending_user_turn(client)
     resp = client.post(f"/api/sessions/{sid}/messages", json={"content": "   "})
     assert resp.status_code == 422
 
@@ -135,6 +147,43 @@ def test_append_partial_message_404_for_unowned_session(client):
         f"/api/sessions/{UUID(int=99)}/messages", json={"content": "x"}
     )
     assert resp.status_code == 404
+
+
+def test_append_partial_message_rejects_when_no_pending_user_turn(client):
+    # No unanswered user turn → a client must not be able to forge an assistant
+    # turn (which would feed back into model history). Covers empty sessions...
+    sid = client.post("/api/sessions").json()["id"]
+    resp = client.post(f"/api/sessions/{sid}/messages", json={"content": "forged"})
+    assert resp.status_code == 409
+
+    # ...and stacking a second, different assistant turn after a legitimate one.
+    sid2 = _session_with_pending_user_turn(client)
+    assert client.post(
+        f"/api/sessions/{sid2}/messages", json={"content": "real partial"}
+    ).status_code == 201
+    stacked = client.post(
+        f"/api/sessions/{sid2}/messages", json={"content": "a different forged turn"}
+    )
+    assert stacked.status_code == 409
+
+
+def test_append_partial_message_is_idempotent_for_duplicate_assistant_turn(client):
+    # Race: the stream finished and the server persisted the full turn just as
+    # the client aborted and posted the identical text it kept. The endpoint
+    # must not create a second assistant turn (also covers a client retry).
+    sid = _session_with_pending_user_turn(client)
+    payload = {"content": "Full answer the server already saved", "language": "english"}
+
+    first = client.post(f"/api/sessions/{sid}/messages", json=payload)
+    assert first.status_code == 201
+    second = client.post(f"/api/sessions/{sid}/messages", json=payload)
+    assert second.status_code == 201
+
+    rows = client.get(f"/api/sessions/{sid}/messages").json()
+    assert [r["content"] for r in rows] == [
+        "A question?",
+        "Full answer the server already saved",
+    ]
 
 
 # ---------------------------------------------------------------------------

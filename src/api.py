@@ -290,14 +290,42 @@ def append_partial_message(
     generator is abandoned before it can persist the assistant turn, but the
     UI keeps the partial text on screen. The client calls this so the stored
     history matches what the user actually saw.
+
+    This is a narrow, abort-recovery endpoint, not a general "write an
+    assistant message" API. The only legitimate state for it is right after a
+    streamed user turn that the server never got to answer, so it accepts a
+    write only when the most recent turn is an unanswered user turn. That
+    blocks a client from forging assistant turns (which feed back into model
+    history) at arbitrary points — empty sessions, stacked assistant turns, or
+    mid-conversation injection are all rejected with 409.
+
+    Idempotent: if the stream finished server-side in the small window before
+    the client aborted, the assistant turn is already persisted with the full
+    text — which, since every token reached the client, is identical to what
+    the client kept. In that case (and on a client retry) return the existing
+    turn instead of writing a duplicate.
     """
     sid = _parse_sid(session_id)
     _require_owned(request, sid, user)
     if not body.content.strip():
         raise HTTPException(status_code=422, detail="content must not be empty")
-    t = request.app.state.sessions.append_turn(
-        sid, role="assistant", content=body.content, language=body.language
-    )
+    sessions = request.app.state.sessions
+    recent = sessions.recent_turns(sid, n=1)
+    last = recent[-1] if recent else None
+    if last is not None and last.role == "assistant" and last.content == body.content:
+        # Race or retry: the full turn is already stored. Return it, no dup.
+        t = last
+    elif last is not None and last.role == "user":
+        # The expected abort-recovery case: answer the pending user turn.
+        t = sessions.append_turn(
+            sid, role="assistant", content=body.content, language=body.language
+        )
+    else:
+        # No unanswered user turn to attach to → reject rather than forge one.
+        raise HTTPException(
+            status_code=409,
+            detail="no unanswered user turn to attach a partial answer to",
+        )
     return MessageOut(
         role=t.role,
         content=t.content,

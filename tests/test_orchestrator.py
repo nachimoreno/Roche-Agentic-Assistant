@@ -209,6 +209,23 @@ def test_stream_question_emits_meta_tokens_done_and_persists(fake_assistant):
     assert turns[-1].content == full
 
 
+def test_stream_aborted_midway_does_not_persist_assistant_turn(fake_assistant):
+    # When the client hits Stop / disconnects, the SSE generator is closed,
+    # raising GeneratorExit mid-stream. The server must NOT persist the
+    # assistant turn here — the client saves the partial it kept on screen via
+    # POST /api/sessions/{id}/messages. Persisting in both places would dup.
+    assistant, sessions, _ = fake_assistant
+    sid = new_id()
+    gen = assistant.handle_stream(sid, "How do I clean the centrifuge?")
+
+    assert isinstance(next(gen), StreamMeta)        # consume meta
+    assert isinstance(next(gen), StreamToken)        # consume first token
+    gen.close()                                      # abort while mid-stream
+
+    turns = sessions.recent_turns(sid, n=10)
+    assert [t.role for t in turns] == ["user"]       # no assistant turn written
+
+
 def test_handle_stamps_user_id_and_sets_title(fake_assistant):
     assistant, sessions, _ = fake_assistant
     sid = new_id()
