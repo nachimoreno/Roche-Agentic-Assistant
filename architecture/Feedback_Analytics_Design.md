@@ -315,7 +315,26 @@ needed for the analytics math:
    embedding fallback until the shared-drive migration lands and the Drive
    source adopts the same `parse_front_matter` step (a small follow-up).
 3. **Surface** — analytics endpoints + admin dashboard + `require_admin` +
-   admin seeding + tenant scoping.
+   admin seeding + tenant scoping. **✅ DONE** — `repositories.py`
+   (`summary`/`hotspots`/`trend` aggregations + `NEGATIVE_EMOTIONS` taxonomy;
+   negative = explicit down-vote OR unrated NLP feedback with a negative
+   emotion — an up-vote is never negative even if its comment classifies
+   negatively), `auth.py` (`require_admin`, 404 for non-admins, role read
+   fresh per request), `settings.py` (`ADMIN_EMAILS` allowlist),
+   `api.py` (promote-on-register/login; `GET /api/analytics/summary|hotspots|
+   trend?days=&dimension=`; `GET /admin` page route; `role` on `UserOut`;
+   all queries scoped to the admin's `tenant_id`), `pages/admin.html`
+   (dashboard — outside the `/static` mount so the page itself is gated;
+   Chart.js 4.4.9 vendored at `static/vendor/`, no CDN; hotspot bars render
+   citation blame solid and embedding blame hatched so inferred attribution
+   is visually distinct), `static/index.html` (admin-only header link).
+   Tests: analytics math + scoping in `test_repositories.py`; gate, seeding,
+   and forged-role rejection in `test_api.py` (the admin tests run the real
+   cookie path, since `require_admin` bypasses dependency overrides).
+   Verified end-to-end against a live server: register→promote→chat→rate→
+   analytics→dashboard, including non-admin 404s.
+   Note: the `days` query param realises the doc's `since=` semantically
+   (cutoff = now − days; absent = all time).
 4. **Discover (later)** — embedding clustering (HDBSCAN/KMeans) over feedback
    vectors for emergent themes the taxonomy misses. Deliberately deferred:
    unstable at low volume; the taxonomy join carries the dashboard until

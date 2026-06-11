@@ -34,13 +34,20 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
 
-from auth import get_current_user, hash_password, verify_password
-from db import User
+from datetime import datetime, timedelta
+
+from auth import get_current_user, hash_password, require_admin, verify_password
+from db import User, utcnow
 from llm import LLMAuthError
 from logging_setup import setup_logging
 from main import build_assistant, build_drive_source, build_engine
 from orchestrator import Assistant, StreamDone, StreamMeta, StreamToken
-from repositories import EmailTakenError, SessionRepository, UserRepository
+from repositories import (
+    EmailTakenError,
+    FeedbackRepository,
+    SessionRepository,
+    UserRepository,
+)
 from settings import Settings
 
 load_dotenv()
@@ -107,6 +114,7 @@ async def lifespan(app: FastAPI):
     engine = build_engine(_settings)
     app.state.users = UserRepository(engine)
     app.state.sessions = SessionRepository(engine)
+    app.state.feedback = FeedbackRepository(engine)
     _report_drive_status(_settings)
     try:
         app.state.assistant = build_assistant(_settings, engine=engine)
@@ -206,13 +214,34 @@ class UserOut(BaseModel):
     id: str
     email: str
     display_name: Optional[str] = None
+    role: Optional[str] = None         # "user" | "admin" — drives the dashboard link
 
 
 def _user_out(user: User) -> UserOut:
-    return UserOut(id=str(user.id), email=user.email, display_name=user.display_name)
+    return UserOut(
+        id=str(user.id),
+        email=user.email,
+        display_name=user.display_name,
+        role=user.role or "user",
+    )
 
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _maybe_promote_admin(users: UserRepository, user: User) -> User:
+    """Promote an allowlisted email to admin (ADMIN_EMAILS in .env).
+
+    This is the only path that grants the role — `register`/`login` request
+    bodies never carry one. Promotion is one-way here; revocation is a manual
+    `set_role` (deliberate: removing an email from the allowlist shouldn't
+    silently demote an admin mid-investigation).
+    """
+    if user.role != "admin" and user.email in _settings.admin_email_set:
+        promoted = users.set_role(user.id, "admin")
+        if promoted is not None:
+            return promoted
+    return user
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +269,7 @@ def register(req: RegisterRequest, request: Request):
     except EmailTakenError:
         raise HTTPException(status_code=409, detail="An account with that email already exists.")
 
+    user = _maybe_promote_admin(users, user)
     request.session["user_id"] = str(user.id)
     return _user_out(user)
 
@@ -252,6 +282,7 @@ def login(req: LoginRequest, request: Request):
     if user is None or not verify_password(user.password_hash, req.password):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
+    user = _maybe_promote_admin(users, user)
     request.session["user_id"] = str(user.id)
     return _user_out(user)
 
@@ -563,6 +594,67 @@ def rate_turn(
         raise HTTPException(status_code=500, detail="Internal error handling the request.")
 
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Analytics (admin-only)
+# ---------------------------------------------------------------------------
+
+_pages = Path(__file__).parent / "pages"
+
+
+def _since(days: Optional[int]) -> Optional[datetime]:
+    """A UTC cutoff `days` ago, or None for all time. Clamped to >= 1."""
+    if days is None:
+        return None
+    return utcnow() - timedelta(days=max(1, days))
+
+
+@app.get("/admin", include_in_schema=False)
+def admin_page(user: User = Depends(require_admin)):
+    """The analytics dashboard. Lives outside the /static mount so the page
+    itself (not just its data) is behind the admin gate."""
+    return FileResponse(str(_pages / "admin.html"))
+
+
+@app.get("/api/analytics/summary")
+def analytics_summary(
+    request: Request,
+    days: Optional[int] = None,
+    user: User = Depends(require_admin),
+):
+    feedback: FeedbackRepository = request.app.state.feedback
+    return feedback.summary(since=_since(days), tenant_id=user.tenant_id)
+
+
+@app.get("/api/analytics/hotspots")
+def analytics_hotspots(
+    request: Request,
+    dimension: str = "process",
+    days: Optional[int] = None,
+    limit: int = 10,
+    user: User = Depends(require_admin),
+):
+    feedback: FeedbackRepository = request.app.state.feedback
+    try:
+        return feedback.hotspots(
+            dimension=dimension,
+            since=_since(days),
+            tenant_id=user.tenant_id,
+            limit=max(1, min(limit, 50)),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@app.get("/api/analytics/trend")
+def analytics_trend(
+    request: Request,
+    days: Optional[int] = None,
+    user: User = Depends(require_admin),
+):
+    feedback: FeedbackRepository = request.app.state.feedback
+    return feedback.trend(since=_since(days), tenant_id=user.tenant_id)
 
 
 if __name__ == "__main__":

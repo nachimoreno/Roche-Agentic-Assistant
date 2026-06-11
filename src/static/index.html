@@ -643,6 +643,9 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
   <button class="hdr-btn" id="exportBtn" title="Export conversation" aria-label="Export" onclick="exportConversation()">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
   </button>
+  <a class="hdr-btn" id="adminBtn" title="Feedback analytics" aria-label="Feedback analytics" href="/admin" style="display:none">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+  </a>
   <button class="hdr-btn" id="darkToggleBtn" title="Toggle dark mode" aria-label="Toggle theme" onclick="toggleDark()">
     <svg id="iconSun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     <svg id="iconMoon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
@@ -831,6 +834,9 @@ async function bootApp() {
   const who = currentUser.display_name || currentUser.email;
   document.getElementById('drawerUser').textContent = who;
   document.getElementById('userAvatar').textContent = initials(who);
+  // Admins get the feedback-analytics console link.
+  document.getElementById('adminBtn').style.display =
+    currentUser.role === 'admin' ? '' : 'none';
 
   // Desktop: dock the sidebar (ChatGPT-style) unless the user collapsed it.
   if (localStorage.getItem(SK_SB) !== '0') document.body.classList.add('docked');

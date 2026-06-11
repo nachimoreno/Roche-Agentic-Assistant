@@ -38,6 +38,20 @@ def verify_password(password_hash: str, password: str) -> bool:
         return False
 
 
+def require_admin(request: Request) -> User:
+    """Resolve the session to a live admin `User`, or 404.
+
+    404 (not 403) so non-admins can't tell the admin surface exists — same
+    convention as `_require_owned` in the API layer. Role is read fresh from
+    the DB via `get_current_user`, so a revoked admin loses access on the
+    next request, not the next login.
+    """
+    user = get_current_user(request)
+    if user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+    return user
+
+
 def get_current_user(request: Request) -> User:
     """Resolve the signed-cookie session to a live `User`, or 401.
 

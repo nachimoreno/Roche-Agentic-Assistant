@@ -29,7 +29,7 @@ from auth import get_current_user
 from conversation_layer import AnalysisResult
 from db import User, create_all, make_engine
 from orchestrator import Response, StreamDone, StreamMeta, StreamToken
-from repositories import SessionRepository, UserRepository
+from repositories import FeedbackRepository, SessionRepository, UserRepository
 
 # A fixed authenticated user for the HTTP-surface tests (auth is overridden,
 # not exercised here — see test_auth.py / test_sessions.py for the real flow).
@@ -82,6 +82,7 @@ def client(tmp_path):
     create_all(engine)
     api.app.state.sessions = SessionRepository(engine)
     api.app.state.users = UserRepository(engine)
+    api.app.state.feedback = FeedbackRepository(engine)
     api.app.dependency_overrides[get_current_user] = lambda: _FAKE_USER
     try:
         yield TestClient(api.app)
@@ -515,3 +516,93 @@ def test_rate_turn_404_when_assistant_rejects_turn(client):
         f"/api/sessions/{sid}/turns/{UUID(int=7)}/feedback", json={"rating": "up"}
     )
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Admin gate + analytics endpoints
+#
+# `require_admin` resolves the session cookie via the real `get_current_user`
+# (a direct call, not a Depends), so the dependency override above does NOT
+# apply here — these tests exercise the genuine register → cookie → role path.
+# ---------------------------------------------------------------------------
+
+def _register(client, email="scientist@roche.com"):
+    r = client.post(
+        "/api/auth/register",
+        json={"email": email, "password": "password123", "display_name": "T"},
+    )
+    assert r.status_code == 201
+    return r.json()
+
+
+def _promote_current(client, email):
+    users: UserRepository = api.app.state.users
+    user = users.get_by_email(email)
+    users.set_role(user.id, "admin")
+
+
+def test_analytics_404_for_regular_user(client):
+    _register(client)
+    assert client.get("/api/analytics/summary").status_code == 404
+    assert client.get("/api/analytics/hotspots").status_code == 404
+    assert client.get("/api/analytics/trend").status_code == 404
+    assert client.get("/admin").status_code == 404
+
+
+def test_analytics_ok_for_admin(client):
+    _register(client, "it-admin@roche.com")
+    _promote_current(client, "it-admin@roche.com")
+
+    s = client.get("/api/analytics/summary")
+    assert s.status_code == 200
+    body = s.json()
+    assert body["total"] == 0 and body["negative_rate"] == 0.0
+
+    h = client.get("/api/analytics/hotspots?dimension=process&days=30")
+    assert h.status_code == 200 and h.json() == []
+
+    t = client.get("/api/analytics/trend?days=7")
+    assert t.status_code == 200 and t.json() == []
+
+    page = client.get("/admin")
+    assert page.status_code == 200
+    assert "text/html" in page.headers["content-type"]
+    assert "Feedback" in page.text
+
+
+def test_analytics_rejects_bad_dimension(client):
+    _register(client, "it-admin2@roche.com")
+    _promote_current(client, "it-admin2@roche.com")
+    assert client.get("/api/analytics/hotspots?dimension=user").status_code == 422
+
+
+def test_register_never_accepts_role(client):
+    # A forged role in the register body must be ignored, not honored.
+    r = client.post(
+        "/api/auth/register",
+        json={"email": "sneaky@roche.com", "password": "password123", "role": "admin"},
+    )
+    assert r.status_code == 201
+    assert r.json()["role"] == "user"
+    assert client.get("/api/analytics/summary").status_code == 404
+
+
+def test_admin_allowlist_promotes_on_register(client, monkeypatch):
+    monkeypatch.setattr(api._settings, "admin_emails", "boss@roche.com, Other@x.com")
+    body = _register(client, "boss@roche.com")
+    assert body["role"] == "admin"
+    assert client.get("/api/analytics/summary").status_code == 200
+
+
+def test_admin_allowlist_promotes_on_login(client, monkeypatch):
+    _register(client, "late-admin@roche.com")
+    assert client.get("/api/analytics/summary").status_code == 404
+
+    # Allowlisted afterwards — the next login promotes.
+    monkeypatch.setattr(api._settings, "admin_emails", "late-admin@roche.com")
+    r = client.post(
+        "/api/auth/login",
+        json={"email": "late-admin@roche.com", "password": "password123"},
+    )
+    assert r.status_code == 200 and r.json()["role"] == "admin"
+    assert client.get("/api/analytics/summary").status_code == 200

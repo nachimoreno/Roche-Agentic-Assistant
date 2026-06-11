@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Feedback Telemetry — Roche Scientist Assistant</title>
+<style>
+/* ───────────────────────── telemetry console ─────────────────────────
+   Dark operations surface for IT. Solid = known (cited) blame; hatched =
+   inferred (embedding) blame — provenance is encoded in the texture.   */
+:root{
+  --bg:#07090f; --panel:#0c111d; --panel-2:#101728; --inset:#0a0e18;
+  --line:rgba(148,170,255,.11); --line-2:rgba(148,170,255,.22);
+  --txt:#e9edf8; --t2:#9aa7c7; --t3:#5e6b8c;
+  --blue:#4f7cff; --blue-hi:#86a6ff; --amber:#ffb648; --red:#ff6868;
+  --green:#3ddc97; --neutral:#7d8db3;
+  --mono:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,"Liberation Mono",monospace;
+  --disp:"Avenir Next Condensed","Arial Narrow Bold","Arial Narrow","Helvetica Neue",Arial,sans-serif;
+  --r:6px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{color-scheme:dark}
+body{
+  background:var(--bg);color:var(--txt);font:13px/1.5 var(--mono);
+  min-height:100vh;
+  background-image:
+    radial-gradient(1100px 500px at 85% -10%, rgba(79,124,255,.10), transparent 60%),
+    radial-gradient(800px 420px at -10% 110%, rgba(79,124,255,.06), transparent 55%),
+    repeating-linear-gradient(0deg, rgba(148,170,255,.025) 0 1px, transparent 1px 56px),
+    repeating-linear-gradient(90deg, rgba(148,170,255,.025) 0 1px, transparent 1px 56px);
+}
+body::after{ /* film grain */
+  content:"";position:fixed;inset:0;pointer-events:none;opacity:.35;z-index:1;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .04 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.wrap{position:relative;z-index:2;max-width:1280px;margin:0 auto;padding:22px 26px 64px}
+
+/* ── header ── */
+header{display:flex;align-items:center;gap:18px;padding:6px 2px 18px;border-bottom:1px solid var(--line)}
+.hex{width:30px;height:30px;flex:none;color:var(--blue-hi)}
+.brand{display:flex;flex-direction:column;gap:1px;min-width:0}
+.brand b{
+  font-family:var(--disp);font-size:21px;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;white-space:nowrap;
+}
+.brand b em{font-style:normal;color:var(--blue-hi)}
+.brand span{font-size:10.5px;color:var(--t3);letter-spacing:.22em;text-transform:uppercase}
+.spacer{flex:1}
+.live{display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--t2);letter-spacing:.18em}
+.live i{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2.2s infinite}
+@keyframes pulse{50%{opacity:.35}}
+.seg{display:flex;border:1px solid var(--line-2);border-radius:var(--r);overflow:hidden}
+.seg button{
+  background:transparent;border:0;color:var(--t2);font:11px var(--mono);
+  letter-spacing:.08em;padding:7px 13px;cursor:pointer;border-right:1px solid var(--line);
+}
+.seg button:last-child{border-right:0}
+.seg button:hover{color:var(--txt)}
+.seg button.on{background:var(--blue);color:#fff}
+.btn{
+  background:var(--panel-2);border:1px solid var(--line-2);border-radius:var(--r);
+  color:var(--t2);font:11px var(--mono);letter-spacing:.1em;padding:7px 14px;cursor:pointer;
+}
+.btn:hover{color:var(--txt);border-color:var(--blue)}
+a.back{color:var(--t3);font-size:11px;text-decoration:none;letter-spacing:.08em}
+a.back:hover{color:var(--blue-hi)}
+
+/* ── grid ── */
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px;margin-top:20px}
+.panel{
+  background:linear-gradient(180deg,var(--panel-2),var(--panel));
+  border:1px solid var(--line);border-radius:10px;padding:18px 20px;
+  animation:rise .55s cubic-bezier(.2,.7,.2,1) both;
+}
+.panel:nth-child(1){animation-delay:.02s}.panel:nth-child(2){animation-delay:.07s}
+.panel:nth-child(3){animation-delay:.12s}.panel:nth-child(4){animation-delay:.17s}
+.panel:nth-child(5){animation-delay:.22s}.panel:nth-child(6){animation-delay:.27s}
+.panel:nth-child(7){animation-delay:.32s}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.label{font-size:10px;color:var(--t3);letter-spacing:.24em;text-transform:uppercase;margin-bottom:12px}
+.label small{color:var(--t3);letter-spacing:.06em;text-transform:none;float:right;font-size:10px}
+
+/* hero gauge */
+.hero{grid-column:span 3;display:flex;flex-direction:column;align-items:center;gap:8px}
+.gauge{position:relative;width:150px;height:150px;margin-top:4px}
+.gauge svg{transform:rotate(-90deg)}
+.gauge .track{stroke:rgba(148,170,255,.12)}
+.gauge .arc{stroke:var(--amber);transition:stroke-dasharray 1s cubic-bezier(.2,.7,.2,1), stroke .4s}
+.gauge .val{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+}
+.gauge .val b{font-family:var(--disp);font-size:34px;font-weight:700;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.gauge .val span{font-size:9.5px;color:var(--t3);letter-spacing:.2em;text-transform:uppercase}
+.hero .sub{font-size:11px;color:var(--t2);text-align:center}
+.hero .sub b{color:var(--txt)}
+
+/* kpi stack */
+.kpis{grid-column:span 9;display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.kpi{background:var(--inset);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+.kpi .num{font-family:var(--disp);font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+.kpi .cap{font-size:10px;color:var(--t3);letter-spacing:.2em;text-transform:uppercase;margin-top:3px}
+.kpi .meta{font-size:11px;color:var(--t2);margin-top:8px;display:flex;gap:12px;flex-wrap:wrap}
+.kpi .meta i{font-style:normal}
+.up{color:var(--green)} .down{color:var(--red)} .blue{color:var(--blue-hi)} .amber{color:var(--amber)}
+.splitbar{display:flex;height:6px;border-radius:3px;overflow:hidden;margin-top:10px;background:rgba(148,170,255,.08)}
+.splitbar i{height:100%}
+
+/* hotspots */
+.hotspots{grid-column:span 7}
+.dims{display:flex;gap:0;margin:-4px 0 14px;border:1px solid var(--line-2);border-radius:var(--r);overflow:hidden;width:max-content}
+.dims button{background:transparent;border:0;border-right:1px solid var(--line);color:var(--t2);font:11px var(--mono);padding:6px 14px;letter-spacing:.08em;cursor:pointer}
+.dims button:last-child{border-right:0}
+.dims button.on{background:rgba(79,124,255,.18);color:var(--blue-hi)}
+.hs-row{display:grid;grid-template-columns:minmax(120px,200px) 1fr 84px;gap:12px;align-items:center;padding:7px 0;border-bottom:1px dashed rgba(148,170,255,.07)}
+.hs-row:last-child{border-bottom:0}
+.hs-key{font-size:12px;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hs-track{height:14px;background:rgba(148,170,255,.06);border-radius:3px;overflow:hidden;display:flex}
+.hs-cit,.hs-emb{height:100%;width:0;transition:width .9s cubic-bezier(.2,.7,.2,1)}
+.hs-cit{background:linear-gradient(180deg,#ff7d6a,#e8543f)}
+.hs-emb{
+  background:repeating-linear-gradient(45deg, rgba(255,182,72,.85) 0 4px, rgba(255,182,72,.25) 4px 8px);
+}
+.hs-val{font-size:11px;color:var(--t2);text-align:right;font-variant-numeric:tabular-nums}
+.hs-val b{color:var(--txt)}
+.legend{display:flex;gap:18px;margin-top:14px;font-size:10.5px;color:var(--t3)}
+.legend i{display:inline-block;width:18px;height:9px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.legend .l-cit{background:linear-gradient(180deg,#ff7d6a,#e8543f)}
+.legend .l-emb{background:repeating-linear-gradient(45deg, rgba(255,182,72,.85) 0 4px, rgba(255,182,72,.25) 4px 8px)}
+
+/* right column */
+.trend{grid-column:span 5}
+.trend .chartbox{position:relative;height:200px;margin-top:4px}
+.emotions{grid-column:span 7}
+.em-row{display:grid;grid-template-columns:110px 1fr 40px;gap:12px;align-items:center;padding:5px 0}
+.em-key{font-size:11.5px;color:var(--t2);text-transform:capitalize}
+.em-track{height:9px;background:rgba(148,170,255,.06);border-radius:3px;overflow:hidden}
+.em-fill{height:100%;width:0;border-radius:3px;transition:width .8s cubic-bezier(.2,.7,.2,1)}
+.em-val{font-size:11px;color:var(--t3);text-align:right;font-variant-numeric:tabular-nums}
+.langs{grid-column:span 5}
+.chiprow{display:flex;flex-wrap:wrap;gap:8px}
+.chip{
+  border:1px solid var(--line-2);border-radius:999px;padding:5px 12px;font-size:11px;color:var(--t2);
+  display:flex;gap:8px;align-items:center;text-transform:capitalize;
+}
+.chip b{color:var(--txt);font-variant-numeric:tabular-nums}
+.footnote{margin-top:16px;font-size:10.5px;color:var(--t3);letter-spacing:.04em}
+
+/* states */
+.empty{padding:34px 0;text-align:center;color:var(--t3);font-size:11.5px;letter-spacing:.18em;text-transform:uppercase}
+.lockout{max-width:420px;margin:18vh auto;text-align:center;border:1px solid var(--line-2);border-radius:10px;padding:40px 32px;background:var(--panel)}
+.lockout h1{font-family:var(--disp);letter-spacing:.18em;font-size:20px;margin-bottom:10px}
+.lockout p{color:var(--t2);font-size:12px;margin-bottom:20px}
+.statusline{margin-top:26px;display:flex;justify-content:space-between;color:var(--t3);font-size:10px;letter-spacing:.14em;text-transform:uppercase}
+
+@media(max-width:980px){
+  .hero,.kpis,.hotspots,.trend,.emotions,.langs{grid-column:span 12}
+  .kpis{grid-template-columns:1fr 1fr}
+}
+@media(max-width:620px){.kpis{grid-template-columns:1fr}.wrap{padding:16px 14px 48px}header{flex-wrap:wrap;gap:10px}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <header>
+    <svg class="hex" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+      <path d="M12 2l8.5 5v10L12 22l-8.5-5V7L12 2z"/><path d="M8.6 15.5v-7h2.9a2.1 2.1 0 0 1 .9 4l2 3h-1.9l-1.8-2.8h-.6v2.8z" fill="currentColor" stroke="none"/>
+    </svg>
+    <div class="brand">
+      <b>Feedback <em>Telemetry</em></b>
+      <span>Roche Scientist Assistant · IT Operations</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="live" aria-live="polite"><i></i><span id="liveTxt">LIVE</span></div>
+    <div class="seg" role="tablist" aria-label="Time range">
+      <button data-days="7">7D</button>
+      <button data-days="30" class="on">30D</button>
+      <button data-days="90">90D</button>
+      <button data-days="">ALL</button>
+    </div>
+    <button class="btn" id="refresh" aria-label="Refresh data">↻ REFRESH</button>
+    <a class="back" href="/">← assistant</a>
+  </header>
+
+  <div class="grid" id="grid">
+    <!-- hero: negative rate gauge -->
+    <section class="panel hero" aria-label="Negative feedback rate">
+      <div class="label">Negative rate</div>
+      <div class="gauge">
+        <svg width="150" height="150" viewBox="0 0 120 120" aria-hidden="true">
+          <circle class="track" cx="60" cy="60" r="52" fill="none" stroke-width="9"/>
+          <circle class="arc" id="arc" cx="60" cy="60" r="52" fill="none" stroke-width="9"
+                  stroke-linecap="round" stroke-dasharray="0 326.7"/>
+        </svg>
+        <div class="val"><b id="negRate">—</b><span>of all feedback</span></div>
+      </div>
+      <div class="sub"><b id="negCount">0</b> negative signals<br>of <b id="totalCount">0</b> total</div>
+    </section>
+
+    <!-- KPI stack -->
+    <section class="kpis" aria-label="Key metrics">
+      <div class="panel kpi">
+        <div class="num blue" id="kTotal">0</div>
+        <div class="cap">Feedback volume</div>
+        <div class="meta"><i id="kExplicit" class="blue">— explicit</i><i id="kNlp">— volunteered</i></div>
+        <div class="splitbar" aria-hidden="true"><i id="srcExp" style="background:var(--blue)"></i><i id="srcNlp" style="background:var(--neutral)"></i></div>
+      </div>
+      <div class="panel kpi">
+        <div class="num" id="kThumbs">0</div>
+        <div class="cap">Answer ratings</div>
+        <div class="meta"><i class="up" id="kUp">▲ 0 helpful</i><i class="down" id="kDown">▼ 0 not helpful</i></div>
+        <div class="splitbar" aria-hidden="true"><i id="rUp" style="background:var(--green)"></i><i id="rDown" style="background:var(--red)"></i></div>
+      </div>
+      <div class="panel kpi">
+        <div class="num amber" id="kHotProc">—</div>
+        <div class="cap">Top hotspot</div>
+        <div class="meta"><i id="kHotMeta">no negative signal yet</i></div>
+      </div>
+    </section>
+
+    <!-- hotspots -->
+    <section class="panel hotspots" aria-label="Hotspots">
+      <div class="label">Hotspots — weighted negative blame</div>
+      <div class="dims" role="tablist" aria-label="Dimension">
+        <button data-dim="process" class="on">PROCESS</button>
+        <button data-dim="department">DEPARTMENT</button>
+        <button data-dim="document">DOCUMENT</button>
+      </div>
+      <div id="hsList"><div class="empty">awaiting signal</div></div>
+      <div class="legend">
+        <span><i class="l-cit"></i>known — cited by the rated answer</span>
+        <span><i class="l-emb"></i>inferred — nearest-document estimate</span>
+      </div>
+    </section>
+
+    <!-- trend -->
+    <section class="panel trend" aria-label="Trend">
+      <div class="label">Daily signal <small id="trendSpan"></small></div>
+      <div class="chartbox"><canvas id="trendChart"></canvas></div>
+    </section>
+
+    <!-- emotions -->
+    <section class="panel emotions" aria-label="Emotion spectrum">
+      <div class="label">Emotion spectrum</div>
+      <div id="emList"><div class="empty">awaiting signal</div></div>
+    </section>
+
+    <!-- languages -->
+    <section class="panel langs" aria-label="Languages">
+      <div class="label">Languages</div>
+      <div class="chiprow" id="langChips"><div class="empty">awaiting signal</div></div>
+      <div class="footnote">Counts include volunteered feedback and rated-answer comments. Soft-deleted entries excluded.</div>
+    </section>
+  </div>
+
+  <div class="statusline">
+    <span>weights: a down-vote splits 1/N across the documents its answer cited</span>
+    <span id="updated">updated —</span>
+  </div>
+</div>
+
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const state = { days: 30, dimension: "process" };
+let trendChart = null;
+
+const NEG = new Set(["frustrated","confused","annoyed","angry","disappointed",
+  "overwhelmed","concerned","anxious","skeptical","uncertain","stressed","irritated"]);
+const POS = new Set(["satisfied","pleased","happy","impressed","appreciative"]);
+const emColor = e => NEG.has(e) ? "var(--red)" : POS.has(e) ? "var(--green)" : "var(--neutral)";
+
+function qs(params){
+  const p = new URLSearchParams();
+  if (state.days) p.set("days", state.days);
+  for (const [k,v] of Object.entries(params||{})) p.set(k, v);
+  const s = p.toString();
+  return s ? "?"+s : "";
+}
+
+async function fetchJSON(url){
+  const r = await fetch(url);
+  if (r.status === 401 || r.status === 404) throw Object.assign(new Error("denied"), {denied:true});
+  if (!r.ok) throw new Error("http "+r.status);
+  return r.json();
+}
+
+/* number tween */
+function countUp(el, to, fmt){
+  fmt = fmt || (n => Math.round(n).toLocaleString());
+  const from = parseFloat(el.dataset.v || "0") || 0;
+  el.dataset.v = to;
+  const t0 = performance.now(), dur = 700;
+  (function tick(t){
+    const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+    el.textContent = fmt(from + (to - from) * e);
+    if (k < 1) requestAnimationFrame(tick);
+  })(t0);
+}
+
+function renderSummary(s){
+  const rate = s.negative_rate || 0;
+  countUp($("negRate"), rate * 100, n => n.toFixed(1) + "%");
+  const C = 2 * Math.PI * 52;
+  const arc = $("arc");
+  arc.setAttribute("stroke-dasharray", `${C * Math.min(1, rate)} ${C}`);
+  arc.style.stroke = rate >= .5 ? "var(--red)" : rate >= .25 ? "var(--amber)" : "var(--green)";
+  countUp($("negCount"), s.negative);
+  countUp($("totalCount"), s.total);
+
+  countUp($("kTotal"), s.total);
+  const exp = (s.sources && s.sources.explicit) || 0, nlp = (s.sources && s.sources.nlp) || 0;
+  $("kExplicit").textContent = exp.toLocaleString() + " explicit";
+  $("kNlp").textContent = nlp.toLocaleString() + " volunteered";
+  const st = exp + nlp || 1;
+  $("srcExp").style.width = (exp/st*100) + "%";
+  $("srcNlp").style.width = (nlp/st*100) + "%";
+
+  const up = s.ratings.up || 0, down = s.ratings.down || 0;
+  countUp($("kThumbs"), up + down);
+  $("kUp").textContent = "▲ " + up.toLocaleString() + " helpful";
+  $("kDown").textContent = "▼ " + down.toLocaleString() + " not helpful";
+  const rt = up + down || 1;
+  $("rUp").style.width = (up/rt*100) + "%";
+  $("rDown").style.width = (down/rt*100) + "%";
+
+  /* emotions */
+  const ems = Object.entries(s.emotions || {}).filter(([e]) => e !== "neutral").slice(0, 8);
+  const emMax = Math.max(1, ...ems.map(([,n]) => n));
+  $("emList").innerHTML = ems.length ? ems.map(([e,n]) => `
+    <div class="em-row">
+      <span class="em-key">${e}</span>
+      <div class="em-track"><div class="em-fill" data-w="${n/emMax*100}" style="background:${emColor(e)}"></div></div>
+      <span class="em-val">${n}</span>
+    </div>`).join("") : `<div class="empty">awaiting signal</div>`;
+
+  /* languages */
+  const langs = Object.entries(s.languages || {});
+  $("langChips").innerHTML = langs.length
+    ? langs.map(([l,n]) => `<span class="chip">${l}<b>${n}</b></span>`).join("")
+    : `<div class="empty">awaiting signal</div>`;
+
+  requestAnimationFrame(() =>
+    document.querySelectorAll(".em-fill").forEach(el => el.style.width = el.dataset.w + "%"));
+}
+
+function renderHotspots(rows){
+  const top = rows[0];
+  if (top){
+    $("kHotProc").textContent = top.key;
+    $("kHotMeta").textContent = `weight ${top.weight.toFixed(1)} · ${top.feedback_count} feedback item${top.feedback_count===1?"":"s"}`;
+  } else {
+    $("kHotProc").textContent = "—";
+    $("kHotMeta").textContent = "no negative signal yet";
+  }
+  if (!rows.length){ $("hsList").innerHTML = `<div class="empty">no negative signal in range</div>`; return; }
+  const max = Math.max(...rows.map(r => r.weight)) || 1;
+  $("hsList").innerHTML = rows.map(r => {
+    const w = r.weight / max * 100;
+    const cit = r.weight ? (r.citation_weight / r.weight) : 0;
+    return `<div class="hs-row">
+      <span class="hs-key" title="${r.key}">${r.key}</span>
+      <div class="hs-track">
+        <div class="hs-cit" data-w="${w * cit}"></div>
+        <div class="hs-emb" data-w="${w * (1 - cit)}"></div>
+      </div>
+      <span class="hs-val"><b>${r.weight.toFixed(1)}</b> ·×${r.feedback_count}</span>
+    </div>`;
+  }).join("");
+  requestAnimationFrame(() =>
+    document.querySelectorAll(".hs-cit,.hs-emb").forEach(el => el.style.width = el.dataset.w + "%"));
+}
+
+function renderTrend(rows){
+  $("trendSpan").textContent = rows.length ? `${rows[0].date} → ${rows[rows.length-1].date}` : "";
+  const labels = rows.map(r => r.date.slice(5));
+  const css = getComputedStyle(document.documentElement);
+  const mono = css.getPropertyValue("--mono");
+  if (trendChart) trendChart.destroy();
+  trendChart = new Chart($("trendChart"), {
+    data: {
+      labels,
+      datasets: [
+        { type:"bar", label:"total", data: rows.map(r=>r.total),
+          backgroundColor:"rgba(79,124,255,.30)", borderColor:"rgba(79,124,255,.55)",
+          borderWidth:1, borderRadius:2, maxBarThickness:18 },
+        { type:"line", label:"negative", data: rows.map(r=>r.negative),
+          borderColor:"#ffb648", backgroundColor:"#ffb648", pointRadius:3,
+          pointBackgroundColor:"#ffb648", borderWidth:2, tension:.3 },
+      ],
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false, animation:{duration:600},
+      plugins:{
+        legend:{labels:{color:"#9aa7c7", font:{family:mono, size:10}, boxWidth:14}},
+        tooltip:{backgroundColor:"#101728", borderColor:"rgba(148,170,255,.25)", borderWidth:1,
+                 titleFont:{family:mono}, bodyFont:{family:mono}},
+      },
+      scales:{
+        x:{ticks:{color:"#5e6b8c", font:{family:mono, size:9.5}, maxRotation:0, autoSkip:true},
+           grid:{color:"rgba(148,170,255,.05)"}},
+        y:{beginAtZero:true, ticks:{color:"#5e6b8c", font:{family:mono, size:10}, precision:0},
+           grid:{color:"rgba(148,170,255,.07)"}},
+      },
+    },
+  });
+}
+
+function lockout(){
+  document.body.innerHTML = `
+    <div class="lockout">
+      <h1>ACCESS REQUIRED</h1>
+      <p>This console is restricted to administrators.<br>Your session may have expired.</p>
+      <a class="btn" href="/" style="text-decoration:none">RETURN TO ASSISTANT</a>
+    </div>`;
+}
+
+async function load(){
+  $("liveTxt").textContent = "SYNC…";
+  try {
+    const [summary, hotspots, trend] = await Promise.all([
+      fetchJSON("/api/analytics/summary" + qs()),
+      fetchJSON("/api/analytics/hotspots" + qs({dimension: state.dimension, limit: 10})),
+      fetchJSON("/api/analytics/trend" + qs()),
+    ]);
+    renderSummary(summary);
+    renderHotspots(hotspots);
+    renderTrend(trend);
+    $("updated").textContent = "updated " + new Date().toLocaleTimeString();
+    $("liveTxt").textContent = "LIVE";
+  } catch (err) {
+    if (err.denied) return lockout();
+    $("liveTxt").textContent = "ERROR";
+    console.error(err);
+  }
+}
+
+/* controls */
+document.querySelectorAll(".seg [data-days]").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll(".seg [data-days]").forEach(x => x.classList.remove("on"));
+  b.classList.add("on");
+  state.days = b.dataset.days ? parseInt(b.dataset.days, 10) : null;
+  load();
+}));
+document.querySelectorAll(".dims [data-dim]").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll(".dims [data-dim]").forEach(x => x.classList.remove("on"));
+  b.classList.add("on");
+  state.dimension = b.dataset.dim;
+  load();
+}));
+$("refresh").addEventListener("click", load);
+
+load();
+</script>
+</body>
+</html>

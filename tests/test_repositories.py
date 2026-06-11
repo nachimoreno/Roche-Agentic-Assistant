@@ -277,3 +277,125 @@ def test_set_role_promotes_user(engine):
     updated = users.set_role(u.id, "admin")
     assert updated is not None and updated.role == "admin"
     assert users.get(u.id).role == "admin"
+
+
+# ---------------------------------------------------------------------------
+# Analytics aggregations (feedback pipeline — Phase 3)
+# ---------------------------------------------------------------------------
+
+def _seed_analytics(sessions, feedback):
+    """A small, fully-known corpus of feedback for aggregation assertions.
+
+    - explicit down  → citation attribution split 0.5/0.5 across two processes
+    - explicit up    → positive; must never count as negative
+    - nlp frustrated → embedding attribution to sample-stock (negative)
+    - nlp pleased    → positive volunteered feedback
+    """
+    from attribution import AttributionRow
+
+    sid = new_id()
+    sessions.get_or_create(sid)
+    t = sessions.append_turn(sid, "assistant", "answer", language="english")
+
+    down = feedback.upsert_rating(
+        turn_id=t.id, session_id=sid, rating="down",
+        comment="wrong", emotion="confused", language="english",
+    )
+    feedback.replace_attributions(down.id, "citation", [
+        AttributionRow("a.md", "Intro", "onboarding", "it", 0.5, "citation"),
+        AttributionRow("b.md", "Slots", "instrument-booking", "lab-operations", 0.5, "citation"),
+    ])
+
+    t2 = sessions.append_turn(sid, "assistant", "another", language="german")
+    feedback.upsert_rating(
+        turn_id=t2.id, session_id=sid, rating="up",
+        emotion="neutral", language="german",
+    )
+
+    nlp_neg = feedback.add(_make_feedback(sid, emotion="frustrated", message="stock app is broken"))
+    feedback.replace_attributions(nlp_neg.id, "embedding", [
+        AttributionRow("c.md", None, "sample-stock", "lab-operations", 1.0, "embedding", 0.3),
+    ])
+
+    feedback.add(_make_feedback(sid, language="german", emotion="pleased", message="nice!"))
+    return sid
+
+
+def test_summary_counts_and_negative_rate(sessions, feedback):
+    _seed_analytics(sessions, feedback)
+    s = feedback.summary()
+
+    assert s["total"] == 4
+    # Negative = the down-vote + the frustrated NLP entry. The up-vote stays
+    # positive even though its comment classified as "confused".
+    assert s["negative"] == 2
+    assert abs(s["negative_rate"] - 0.5) < 1e-9
+    assert s["ratings"] == {"up": 1, "down": 1}
+    assert s["emotions"]["frustrated"] == 1
+    assert s["languages"] == {"english": 2, "german": 2}
+    assert s["sources"] == {"explicit": 2, "nlp": 2}
+
+
+def test_hotspots_sum_weights_for_negative_feedback_only(sessions, feedback):
+    _seed_analytics(sessions, feedback)
+
+    by_process = {r["key"]: r for r in feedback.hotspots(dimension="process")}
+    # sample-stock: 1.0 (embedding) tops onboarding/booking at 0.5 each.
+    assert by_process["sample-stock"]["weight"] == 1.0
+    assert by_process["sample-stock"]["embedding_weight"] == 1.0
+    assert by_process["onboarding"]["weight"] == 0.5
+    assert by_process["onboarding"]["citation_weight"] == 0.5
+    assert by_process["instrument-booking"]["weight"] == 0.5
+    # The positive entries contributed nothing.
+    assert sum(r["weight"] for r in by_process.values()) == 2.0
+
+    by_dept = {r["key"]: r for r in feedback.hotspots(dimension="department")}
+    assert by_dept["lab-operations"]["weight"] == 1.5      # 0.5 + 1.0
+    assert by_dept["it"]["weight"] == 0.5
+
+    by_doc = {r["key"]: r for r in feedback.hotspots(dimension="document")}
+    assert set(by_doc) == {"a.md", "b.md", "c.md"}
+    assert by_doc["c.md"]["feedback_count"] == 1
+
+
+def test_hotspots_rejects_unknown_dimension(feedback):
+    with pytest.raises(ValueError):
+        feedback.hotspots(dimension="user")
+
+
+def test_trend_buckets_by_day(sessions, feedback):
+    sid = new_id()
+    sessions.get_or_create(sid)
+    old = _make_feedback(sid, emotion="angry", message="old gripe")
+    old.created_at = utcnow() - timedelta(days=3)
+    feedback.add(old)
+    feedback.add(_make_feedback(sid, emotion="pleased", message="today, fine"))
+    feedback.add(_make_feedback(sid, emotion="confused", message="today, lost"))
+
+    rows = feedback.trend()
+    assert len(rows) == 2                      # two distinct days
+    assert rows[0]["total"] == 1 and rows[0]["negative"] == 1
+    assert rows[-1]["total"] == 2 and rows[-1]["negative"] == 1
+    assert rows[0]["date"] < rows[-1]["date"]
+
+    # `since` trims the old bucket.
+    recent = feedback.trend(since=utcnow() - timedelta(days=1))
+    assert len(recent) == 1 and recent[0]["total"] == 2
+
+
+def test_summary_scopes_by_since_and_tenant(sessions, feedback):
+    sid = new_id()
+    tenant = new_id()
+    sessions.get_or_create(sid)
+
+    old = _make_feedback(sid, emotion="angry", message="ancient")
+    old.created_at = utcnow() - timedelta(days=30)
+    feedback.add(old)
+    scoped = _make_feedback(sid, emotion="confused", message="tenant's")
+    scoped.tenant_id = tenant
+    feedback.add(scoped)
+
+    assert feedback.summary()["total"] == 2
+    assert feedback.summary(since=utcnow() - timedelta(days=7))["total"] == 1
+    assert feedback.summary(tenant_id=tenant)["total"] == 1
+    assert feedback.summary(tenant_id=new_id())["total"] == 0

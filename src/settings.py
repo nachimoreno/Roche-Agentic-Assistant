@@ -64,6 +64,16 @@ class Settings(BaseSettings):
     # Only send the cookie over HTTPS — set true in production.
     session_https_only: bool = False
     min_password_length: int = 8
+    # Comma-separated emails promoted to the "admin" role on login (analytics
+    # dashboard access). Kept as a plain string so .env stays simple; use
+    # `admin_email_set` to consume it.
+    admin_emails: str = ""
+
+    @property
+    def admin_email_set(self) -> set[str]:
+        return {
+            e.strip().lower() for e in self.admin_emails.split(",") if e.strip()
+        }
 
     # ---- Observability ------------------------------------------------
     log_level: str = "INFO"

@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import Engine
+from sqlalchemy import Engine, and_, case, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session as DbSession, select
 
@@ -104,6 +104,23 @@ class UserRepository:
 # ---------------------------------------------------------------------------
 # FeedbackRepository
 # ---------------------------------------------------------------------------
+
+# Which conversation-layer emotions count as "negative" for analytics. Explicit
+# ratings don't need this (rating == "down" is negative by definition); it
+# classifies volunteered NLP feedback, which has an emotion but no rating.
+NEGATIVE_EMOTIONS = frozenset({
+    "frustrated", "confused", "annoyed", "angry", "disappointed",
+    "overwhelmed", "concerned", "anxious", "skeptical", "uncertain",
+    "stressed", "irritated",
+})
+
+# Hotspot dimensions → the FeedbackAttribution column they group by.
+_HOTSPOT_DIMENSIONS = {
+    "document": "source",
+    "process": "process",
+    "department": "department",
+}
+
 
 class FeedbackRepository:
     def __init__(self, engine: Engine) -> None:
@@ -270,6 +287,168 @@ class FeedbackRepository:
                 FeedbackAttribution.deleted_at.is_(None),  # type: ignore[union-attr]
             )
             return list(db.exec(stmt).all())
+
+    # ------------------------------------------------------------------
+    # Analytics aggregations (read-side; plain SQL at MVP scale)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _negative_clause():
+        """SQL predicate for "this feedback is negative".
+
+        Explicit ratings: a down-vote. Volunteered NLP feedback (no rating):
+        a negative emotion. An explicit up-vote is never negative even if its
+        comment classified as e.g. "confused".
+        """
+        return or_(
+            FeedbackEntry.rating == "down",
+            and_(
+                FeedbackEntry.rating.is_(None),  # type: ignore[union-attr]
+                FeedbackEntry.emotion.in_(NEGATIVE_EMOTIONS),  # type: ignore[union-attr]
+            ),
+        )
+
+    def _scoped(self, stmt, since: Optional[datetime], tenant_id: Optional[UUID]):
+        stmt = stmt.where(FeedbackEntry.deleted_at.is_(None))  # type: ignore[union-attr]
+        if since is not None:
+            stmt = stmt.where(FeedbackEntry.created_at >= since)
+        if tenant_id is not None:
+            stmt = stmt.where(FeedbackEntry.tenant_id == tenant_id)
+        return stmt
+
+    def summary(
+        self,
+        *,
+        since: Optional[datetime] = None,
+        tenant_id: Optional[UUID] = None,
+    ) -> dict:
+        """Volume, negative rate, and emotion/language/source distributions."""
+        with DbSession(self._engine) as db:
+            total = db.exec(
+                self._scoped(select(func.count()).select_from(FeedbackEntry), since, tenant_id)
+            ).one()
+            negative = db.exec(
+                self._scoped(
+                    select(func.count()).select_from(FeedbackEntry), since, tenant_id
+                ).where(self._negative_clause())
+            ).one()
+
+            def _dist(column) -> dict[str, int]:
+                """Counts per distinct value, largest first, NULLs dropped."""
+                rows = db.exec(
+                    self._scoped(
+                        select(column, func.count()).select_from(FeedbackEntry),
+                        since,
+                        tenant_id,
+                    )
+                    .where(column.is_not(None))
+                    .group_by(column)
+                    .order_by(func.count().desc())
+                ).all()
+                return {key: count for key, count in rows}
+
+            ratings = _dist(FeedbackEntry.rating)
+            emotions = _dist(FeedbackEntry.emotion)
+            languages = _dist(FeedbackEntry.language)
+            sources = _dist(FeedbackEntry.source)
+
+        return {
+            "total": total,
+            "negative": negative,
+            "negative_rate": (negative / total) if total else 0.0,
+            "ratings": {"up": ratings.get("up", 0), "down": ratings.get("down", 0)},
+            "emotions": emotions,
+            "languages": languages,
+            "sources": sources,                         # {"explicit": n, "nlp": n}
+        }
+
+    def hotspots(
+        self,
+        *,
+        dimension: str = "process",
+        since: Optional[datetime] = None,
+        tenant_id: Optional[UUID] = None,
+        limit: int = 10,
+    ) -> list[dict]:
+        """Top dimension values by summed attribution weight of negative feedback.
+
+        Joins `FeedbackAttribution` → `FeedbackEntry`, keeps negative feedback
+        only, and `SUM(weight)`s per document/process/department. The
+        citation/embedding split is reported separately so inferred blame is
+        never presented as known fact. Unlabelled docs group under
+        "(unlabelled)" rather than vanishing.
+        """
+        column_name = _HOTSPOT_DIMENSIONS.get(dimension)
+        if column_name is None:
+            raise ValueError(
+                f"dimension must be one of {sorted(_HOTSPOT_DIMENSIONS)}, got {dimension!r}"
+            )
+        column = getattr(FeedbackAttribution, column_name)
+        key = func.coalesce(column, "(unlabelled)")
+
+        stmt = (
+            select(
+                key,
+                func.sum(FeedbackAttribution.weight),
+                func.sum(
+                    case(
+                        (FeedbackAttribution.method == "citation", FeedbackAttribution.weight),
+                        else_=0.0,
+                    )
+                ),
+                func.count(func.distinct(FeedbackAttribution.feedback_id)),
+            )
+            .join(FeedbackEntry, FeedbackEntry.id == FeedbackAttribution.feedback_id)  # type: ignore[arg-type]
+            .where(
+                FeedbackAttribution.deleted_at.is_(None),  # type: ignore[union-attr]
+                self._negative_clause(),
+            )
+            .group_by(key)
+            .order_by(func.sum(FeedbackAttribution.weight).desc())
+            .limit(limit)
+        )
+        stmt = self._scoped(stmt, since, tenant_id)
+
+        with DbSession(self._engine) as db:
+            rows = db.exec(stmt).all()
+        return [
+            {
+                "key": k,
+                "weight": round(weight, 4),
+                "citation_weight": round(cited, 4),
+                "embedding_weight": round(weight - cited, 4),
+                "feedback_count": count,
+            }
+            for k, weight, cited, count in rows
+        ]
+
+    def trend(
+        self,
+        *,
+        since: Optional[datetime] = None,
+        tenant_id: Optional[UUID] = None,
+    ) -> list[dict]:
+        """Per-day feedback volume and negative count, oldest first.
+
+        Buckets in Python rather than SQL `date()` so the same code runs on
+        SQLite and Postgres unchanged; feedback volume is small at MVP scale.
+        """
+        stmt = self._scoped(
+            select(FeedbackEntry.created_at, self._negative_clause()),
+            since,
+            tenant_id,
+        ).order_by(FeedbackEntry.created_at)
+        with DbSession(self._engine) as db:
+            rows = db.exec(stmt).all()
+
+        buckets: dict[str, dict] = {}
+        for created_at, is_negative in rows:
+            day = created_at.date().isoformat()
+            bucket = buckets.setdefault(day, {"date": day, "total": 0, "negative": 0})
+            bucket["total"] += 1
+            if is_negative:
+                bucket["negative"] += 1
+        return [buckets[d] for d in sorted(buckets)]
 
 
 # ---------------------------------------------------------------------------
