@@ -15,6 +15,7 @@ import pytest
 
 from document_source import LocalMarkdownSource
 from embeddings import FastEmbedProvider
+from lexical_index import BM25Index
 from retrieval import DocumentStore
 from vector_store import ChromaVectorStore
 
@@ -83,3 +84,37 @@ def test_reingest_is_idempotent(document_store):
     second = document_store.ingest()
     assert second.chunks_written == 0
     assert second.documents_reindexed == 0
+
+
+# ---------------------------------------------------------------------------
+# Hybrid retrieval (dense + BM25)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def hybrid_store(tmp_path_factory):
+    tmp = tmp_path_factory.mktemp("chroma_hybrid")
+    store = ChromaVectorStore(path=str(tmp), collection_name="test_hybrid")
+    docs = DocumentStore(
+        source=LocalMarkdownSource(DOCS_PATH),
+        embedder=FastEmbedProvider(),
+        vector_store=store,
+        manifest_path=str(tmp / "manifest.json"),
+        lexical_index=BM25Index(),
+    )
+    docs.ingest()
+    return docs
+
+
+def test_hybrid_promotes_exact_keyword_match(hybrid_store):
+    # "ServiceNow" is a distinctive keyword; BM25 should pull the incident-
+    # reporting doc to the very top, where dense-only ranks it lower.
+    chunks = hybrid_store.retrieve("ServiceNow incident", k=3)
+    assert chunks[0].metadata.get("source_id") == "03_incident_reporting.md"
+
+
+def test_hybrid_preserves_semantic_recall(hybrid_store):
+    # A paraphrase with no shared keywords must still work — the dense half of
+    # the hybrid carries it.
+    chunks = hybrid_store.retrieve("safe alcohol percentage for cleaning a laptop", k=3)
+    sources = {c.metadata.get("source_id") for c in chunks}
+    assert "06_cleaning_lab_devices.md" in sources

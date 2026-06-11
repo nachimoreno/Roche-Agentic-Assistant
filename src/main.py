@@ -23,6 +23,7 @@ from db import create_all, make_engine, new_id
 from document_source import CompositeSource, DocumentSource, LocalMarkdownSource
 from google_drive_source import GoogleDriveSource
 from embeddings import FastEmbedProvider
+from lexical_index import BM25Index
 from llm import GroqClient
 from logging_setup import setup_logging
 from orchestrator import Assistant
@@ -110,11 +111,13 @@ def build_assistant(settings: Settings, engine: Optional[Engine] = None) -> Assi
     )
     source = build_source(settings)
 
+    lexical = BM25Index() if settings.retrieval_mode == "hybrid" else None
     docs = DocumentStore(
         source=source,
         embedder=embedder,
         vector_store=vector_store,
         manifest_path=f"{settings.chroma_path}/manifest.json",
+        lexical_index=lexical,
     )
     report = docs.ingest()
     logger.info(

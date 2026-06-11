@@ -16,12 +16,14 @@ import hashlib
 import json
 import logging
 import re
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable, Optional
 
 from document_source import DocumentSource, SourceDocument
 from embeddings import EmbeddingProvider
+from lexical_index import LexicalIndex
 from vector_store import Chunk, VectorStore
 
 
@@ -30,6 +32,13 @@ logger = logging.getLogger(__name__)
 
 _MAX_CHUNK_CHARS = 1200
 _MIN_CHUNK_CHARS = 80
+
+# Hybrid retrieval tuning. We pull a wider candidate pool from each retriever
+# than the final k so fusion has signal to work with, then blend the two
+# rankings with Reciprocal Rank Fusion. _RRF_K is the standard RRF constant; a
+# larger value flattens the contribution of top ranks.
+_HYBRID_POOL = 20
+_RRF_K = 60
 
 # Bump when chunking logic changes so previously-ingested documents are
 # re-chunked even though their content hash is unchanged. Without this, the
@@ -60,11 +69,14 @@ class DocumentStore:
         vector_store: VectorStore,
         *,
         manifest_path: str | Path = ".chroma/manifest.json",
+        lexical_index: Optional[LexicalIndex] = None,
     ) -> None:
         self._source = source
         self._embedder = embedder
         self._store = vector_store
         self._manifest_path = Path(manifest_path)
+        # When set, retrieval is hybrid (dense + BM25). When None, dense-only.
+        self._lexical = lexical_index
 
     # ------------------------------------------------------------------
     # Ingestion
@@ -130,6 +142,12 @@ class DocumentStore:
                 logger.info("ingest.dropped", extra={"doc_id": stale_id})
 
         self._save_manifest(new_manifest)
+
+        # Rebuild the lexical index from the full corpus (not just docs touched
+        # this run) so BM25 and dense retrieval always see the same chunks.
+        if self._lexical is not None:
+            self._lexical.index(self._store.get_all())
+
         report = IngestReport(
             documents_seen=seen,
             documents_reindexed=reindexed,
@@ -151,12 +169,32 @@ class DocumentStore:
 
     def retrieve(self, query: str, k: int = 4) -> list[Chunk]:
         embedding = self._embedder.embed([query])[0]
-        chunks = self._store.query(embedding=embedding, k=k)
+
+        # Dense-only path (no lexical index configured).
+        if self._lexical is None:
+            chunks = self._store.query(embedding=embedding, k=k)
+            logger.info(
+                "retrieval.done",
+                extra={"mode": "dense", "k": k, "returned": len(chunks)},
+            )
+            return chunks
+
+        # Hybrid: blend a wider dense + BM25 candidate pool with RRF.
+        pool = max(k, _HYBRID_POOL)
+        dense = self._store.query(embedding=embedding, k=pool)
+        lexical = self._lexical.search(query, k=pool)
+        fused = _reciprocal_rank_fusion([dense, lexical], k=k)
         logger.info(
             "retrieval.done",
-            extra={"k": k, "returned": len(chunks)},
+            extra={
+                "mode": "hybrid",
+                "k": k,
+                "dense": len(dense),
+                "lexical": len(lexical),
+                "returned": len(fused),
+            },
         )
-        return chunks
+        return fused
 
     # ------------------------------------------------------------------
     # Manifest helpers
@@ -178,6 +216,35 @@ class DocumentStore:
         self._manifest_path.write_text(
             json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"
         )
+
+
+# ---------------------------------------------------------------------------
+# Hybrid fusion
+# ---------------------------------------------------------------------------
+
+def _reciprocal_rank_fusion(
+    result_lists: Iterable[list[Chunk]], k: int, rrf_k: int = _RRF_K
+) -> list[Chunk]:
+    """Combine several ranked chunk lists into one via Reciprocal Rank Fusion.
+
+    RRF scores each chunk by 1/(rrf_k + rank) summed across the lists it
+    appears in, so a chunk ranked highly by either retriever surfaces — and one
+    ranked by both is reinforced. It works on ranks, not raw scores, so the
+    incomparable scales of cosine similarity and BM25 never need normalising.
+    """
+    fused: dict[str, float] = defaultdict(float)
+    chunk_by_id: dict[str, Chunk] = {}
+    for results in result_lists:
+        for rank, chunk in enumerate(results, start=1):
+            fused[chunk.id] += 1.0 / (rrf_k + rank)
+            chunk_by_id.setdefault(chunk.id, chunk)
+
+    ranked = sorted(fused, key=lambda cid: fused[cid], reverse=True)
+    out: list[Chunk] = []
+    for cid in ranked[:k]:
+        c = chunk_by_id[cid]
+        out.append(Chunk(id=c.id, text=c.text, metadata=dict(c.metadata), score=fused[cid]))
+    return out
 
 
 # ---------------------------------------------------------------------------

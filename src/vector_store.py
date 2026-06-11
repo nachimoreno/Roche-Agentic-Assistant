@@ -41,6 +41,8 @@ class VectorStore(Protocol):
 
     def query(self, *, embedding: list[float], k: int = 4) -> list[Chunk]: ...
 
+    def get_all(self) -> list[Chunk]: ...
+
     def delete(self, *, ids: list[str]) -> None: ...
 
     def count(self) -> int: ...
@@ -100,6 +102,19 @@ class ChromaVectorStore:
             score = 1.0 - float(dist)
             chunks.append(Chunk(id=cid, text=doc, metadata=dict(meta or {}), score=score))
         return chunks
+
+    def get_all(self) -> list[Chunk]:
+        """Return every stored chunk (no scores). Used to (re)build the lexical
+        index from the canonical corpus, independent of which docs the last
+        ingest happened to touch."""
+        result = self._collection.get(include=["documents", "metadatas"])
+        ids = result.get("ids", []) or []
+        docs = result.get("documents", []) or []
+        metas = result.get("metadatas", []) or []
+        return [
+            Chunk(id=cid, text=doc, metadata=dict(meta or {}), score=0.0)
+            for cid, doc, meta in zip(ids, docs, metas)
+        ]
 
     def delete(self, *, ids: list[str]) -> None:
         if not ids:

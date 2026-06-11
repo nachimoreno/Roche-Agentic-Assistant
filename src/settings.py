@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     chroma_path: str = ".chroma"
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     top_k: int = 4
+    # "hybrid" fuses dense embeddings with BM25 keyword search (better on exact
+    # tokens — codes, part numbers, app names). "dense" uses embeddings only.
+    retrieval_mode: Literal["dense", "hybrid"] = "hybrid"
 
     # ---- Document source ----------------------------------------------
     # Which DocumentSource to ingest from. "local" reads markdown from
