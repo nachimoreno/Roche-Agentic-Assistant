@@ -111,6 +111,32 @@ def test_create_session_ids_are_unique(client):
     assert a != b
 
 
+def test_append_partial_message_persists_assistant_turn(client):
+    sid = client.post("/api/sessions").json()["id"]
+    resp = client.post(
+        f"/api/sessions/{sid}/messages",
+        json={"content": "Partial answer kept after Stop", "language": "english"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["role"] == "assistant"
+
+    rows = client.get(f"/api/sessions/{sid}/messages").json()
+    assert [r["content"] for r in rows] == ["Partial answer kept after Stop"]
+
+
+def test_append_partial_message_rejects_empty_content(client):
+    sid = client.post("/api/sessions").json()["id"]
+    resp = client.post(f"/api/sessions/{sid}/messages", json={"content": "   "})
+    assert resp.status_code == 422
+
+
+def test_append_partial_message_404_for_unowned_session(client):
+    resp = client.post(
+        f"/api/sessions/{UUID(int=99)}/messages", json={"content": "x"}
+    )
+    assert resp.status_code == 404
+
+
 # ---------------------------------------------------------------------------
 # Chat — happy paths
 # ---------------------------------------------------------------------------

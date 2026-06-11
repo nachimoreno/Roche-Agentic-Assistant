@@ -260,17 +260,28 @@ class Assistant:
 
         full_text = ""
         citations: list[Citation] = []
-        for piece in self._agent.answer_stream(
-            message=message,
-            language=analysis.language,
-            history=history,
-        ):
-            if isinstance(piece, TextDelta):
-                full_text += piece.text
-                yield StreamToken(text=piece.text)
-            elif isinstance(piece, AnswerComplete):
-                full_text = piece.text
-                citations = piece.citations
+        try:
+            for piece in self._agent.answer_stream(
+                message=message,
+                language=analysis.language,
+                history=history,
+            ):
+                if isinstance(piece, TextDelta):
+                    full_text += piece.text
+                    yield StreamToken(text=piece.text)
+                elif isinstance(piece, AnswerComplete):
+                    full_text = piece.text
+                    citations = piece.citations
+        except GeneratorExit:
+            # Client disconnected mid-stream (Stop button, closed tab). The
+            # client persists the partial answer it kept on screen via
+            # POST /api/sessions/{id}/messages — persisting here too would
+            # risk duplicates, so just log.
+            logger.info(
+                "turn.stream.aborted",
+                extra={"session_id": str(session_id), "chars": len(full_text)},
+            )
+            raise
 
         self._sessions.append_turn(
             session_id,

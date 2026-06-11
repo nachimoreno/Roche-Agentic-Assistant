@@ -130,6 +130,11 @@ class MessageOut(BaseModel):
     created_at: str
 
 
+class AppendPartialRequest(BaseModel):
+    content: str
+    language: Optional[str] = None
+
+
 class RegisterRequest(BaseModel):
     email: str
     password: str
@@ -270,6 +275,35 @@ def get_messages(session_id: str, request: Request, user: User = Depends(get_cur
         )
         for t in request.app.state.sessions.messages(sid)
     ]
+
+
+@app.post("/api/sessions/{session_id}/messages", response_model=MessageOut, status_code=201)
+def append_partial_message(
+    session_id: str,
+    body: AppendPartialRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    """Persist a partial assistant answer after the client aborted the stream.
+
+    When the user hits Stop (or the connection drops) the server-side
+    generator is abandoned before it can persist the assistant turn, but the
+    UI keeps the partial text on screen. The client calls this so the stored
+    history matches what the user actually saw.
+    """
+    sid = _parse_sid(session_id)
+    _require_owned(request, sid, user)
+    if not body.content.strip():
+        raise HTTPException(status_code=422, detail="content must not be empty")
+    t = request.app.state.sessions.append_turn(
+        sid, role="assistant", content=body.content, language=body.language
+    )
+    return MessageOut(
+        role=t.role,
+        content=t.content,
+        language=t.language,
+        created_at=t.created_at.isoformat(),
+    )
 
 
 @app.patch("/api/sessions/{session_id}", response_model=SessionItemOut)

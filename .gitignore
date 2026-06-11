@@ -5,6 +5,7 @@
 # Secrets
 .env
 .misc/
+credentials/
 
 # Python
 __pycache__/

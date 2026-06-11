@@ -4,12 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Roche Scientific AI</title>
+<meta name="application-name" content="Roche Scientific AI">
+<meta name="theme-color" content="#0B41CD">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
 <style>
-/* ── TOKENS (LIGHT) ──────────────────────────────────────────── */
+/* ── TOKENS (LIGHT) — Roche brand blue #0B41CD ───────────────── */
 :root {
-  --blue:#0066CC; --blue-h:#0052A3; --blue-light:#EBF4FF; --blue-mid:rgba(0,102,204,.12);
+  --blue:#0B41CD; --blue-h:#0834A4; --blue-light:#EDF1FE; --blue-mid:rgba(11,65,205,.12);
   --bg:#F7F9FC; --surface:#FFFFFF; --surface-2:#F0F4F8; --border:#E2E8F0; --border-2:#D1DCE8;
   --t1:#0F1923; --t2:#374151; --t3:#6B7280; --t4:#9CA3AF;
   --green:#059669; --green-l:#ECFDF5; --amber:#D97706; --amber-l:#FFFBEB; --red:#DC2626;
@@ -23,10 +28,10 @@
   --top-pad:102px;
 }
 
-/* ── TOKENS (DARK) ───────────────────────────────────────────── */
+/* ── TOKENS (DARK) — Roche navy #022366 base ─────────────────── */
 [data-theme="dark"] {
-  --blue:#3B8CE8; --blue-h:#5BA3F0; --blue-light:rgba(59,140,232,.10); --blue-mid:rgba(59,140,232,.15);
-  --bg:#0B0F19; --surface:#161F30; --surface-2:#1D2840; --border:rgba(255,255,255,.08); --border-2:rgba(255,255,255,.13);
+  --blue:#6E8DF7; --blue-h:#8FA8FA; --blue-light:rgba(110,141,247,.12); --blue-mid:rgba(110,141,247,.18);
+  --bg:#070B1D; --surface:#101831; --surface-2:#172246; --border:rgba(255,255,255,.08); --border-2:rgba(255,255,255,.13);
   --t1:#F1F5F9; --t2:#CBD5E1; --t3:#94A3B8; --t4:#5A7090;
   --green:#10B981; --green-l:rgba(16,185,129,.12); --amber:#F59E0B; --amber-l:rgba(245,158,11,.12); --red:#EF4444;
   --s-sm:0 1px 3px rgba(0,0,0,.3); --s:0 4px 16px rgba(0,0,0,.4); --s-lg:0 10px 40px rgba(0,0,0,.5); --s-xl:0 20px 60px rgba(0,0,0,.6);
@@ -52,11 +57,8 @@ textarea,input{font-family:var(--font)}
 }
 [data-theme="dark"] .hdr{background:rgba(11,15,25,.94)}
 .hdr-logo{display:flex;align-items:center;gap:10px;text-decoration:none;flex-shrink:0}
-.hdr-mark{
-  width:32px;height:32px;border-radius:9px;background:linear-gradient(145deg,#1a7de8,#0047b3);
-  display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;letter-spacing:-.5px;
-  box-shadow:0 2px 8px rgba(0,102,204,.35),inset 0 1px 0 rgba(255,255,255,.2);
-}
+/* Roche hexagon wordmark — drawn in currentColor so it follows the theme */
+.roche-wordmark{display:block;color:var(--blue);height:30px;width:auto}
 .hdr-name{font-size:14px;font-weight:600;color:var(--t1);letter-spacing:-.3px}
 .hdr-name em{color:var(--blue);font-style:normal}
 .hdr-sep{width:1px;height:22px;background:var(--border);flex-shrink:0}
@@ -134,11 +136,10 @@ textarea,input{font-family:var(--font)}
 /* ── WELCOME ─────────────────────────────────────────────────── */
 .welcome{display:flex;flex-direction:column;align-items:center;padding:60px 20px 40px;text-align:center}
 .welcome-emblem{
-  width:72px;height:72px;border-radius:22px;background:linear-gradient(145deg,#1a7de8,#0047b3);
-  display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:30px;letter-spacing:-2px;
-  box-shadow:0 8px 32px rgba(0,102,204,.28),0 2px 8px rgba(0,102,204,.16),inset 0 1px 0 rgba(255,255,255,.22);
+  display:flex;align-items:center;justify-content:center;color:var(--blue);
   margin-bottom:24px;animation:emblemIn .5s cubic-bezier(.34,1.56,.64,1) both;
 }
+.welcome-emblem .roche-wordmark{height:62px;filter:drop-shadow(0 6px 18px rgba(11,65,205,.25))}
 @keyframes emblemIn{from{transform:scale(.7) translateY(16px);opacity:0}to{transform:none;opacity:1}}
 .welcome h1{font-size:26px;font-weight:700;color:var(--t1);letter-spacing:-.8px;line-height:1.2;margin-bottom:10px}
 .welcome h1 em{color:var(--blue);font-style:normal}
@@ -168,7 +169,7 @@ textarea,input{font-family:var(--font)}
 .user-bubble{
   background:var(--blue);color:#fff;padding:12px 18px;
   border-radius:18px 18px 4px 18px;font-size:14px;line-height:1.6;
-  box-shadow:0 2px 12px rgba(0,102,204,.22);word-break:break-word;
+  box-shadow:0 2px 12px rgba(11,65,205,.22);word-break:break-word;
 }
 .msg-meta{
   display:flex;align-items:center;gap:6px;margin-top:5px;padding-right:4px;
@@ -180,19 +181,19 @@ textarea,input{font-family:var(--font)}
 .ai-row{display:flex;gap:12px;align-items:flex-start;width:100%}
 .ai-avatar{
   width:34px;height:34px;border-radius:10px;flex-shrink:0;
-  background:linear-gradient(145deg,#1a7de8,#0047b3);
+  background:linear-gradient(145deg,#1C50E0,#022366);
   display:flex;align-items:center;justify-content:center;
   color:#fff;font-weight:800;font-size:13px;
-  box-shadow:0 2px 8px rgba(0,102,204,.22);margin-top:2px;transition:box-shadow .3s;
+  box-shadow:0 2px 8px rgba(11,65,205,.22);margin-top:2px;transition:box-shadow .3s;
 }
 .ai-avatar.pulsing{animation:avatarPulse 1.2s ease infinite}
-@keyframes avatarPulse{0%,100%{box-shadow:0 2px 8px rgba(0,102,204,.22)}50%{box-shadow:0 2px 20px rgba(0,102,204,.55)}}
+@keyframes avatarPulse{0%,100%{box-shadow:0 2px 8px rgba(11,65,205,.22)}50%{box-shadow:0 2px 20px rgba(11,65,205,.55)}}
 .ai-content{flex:1;min-width:0}
 
 /* Response card */
 .response-card{background:var(--surface);border:1px solid var(--border);border-radius:4px 18px 18px 18px;box-shadow:var(--s);overflow:hidden;position:relative}
-.response-card::before{content:'';position:absolute;top:0;left:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--blue),rgba(0,102,204,.2))}
-.response-label{display:flex;align-items:center;gap:7px;padding:10px 16px 10px 19px;border-bottom:1px solid var(--border);background:linear-gradient(90deg,rgba(0,102,204,.035),transparent)}
+.response-card::before{content:'';position:absolute;top:0;left:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--blue),rgba(11,65,205,.2))}
+.response-label{display:flex;align-items:center;gap:7px;padding:10px 16px 10px 19px;border-bottom:1px solid var(--border);background:linear-gradient(90deg,rgba(11,65,205,.035),transparent)}
 .rl-type{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--blue)}
 .rl-space{flex:1}
 .rl-badge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:var(--r-f);letter-spacing:.3px}
@@ -285,9 +286,9 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
 .composer-shell{position:fixed;bottom:0;left:0;right:0;z-index:150;padding:10px 20px 18px;background:linear-gradient(to top,var(--bg) 74%,rgba(0,0,0,0));transition:background .3s}
 .composer-inner{max-width:var(--col);margin:0 auto}
 .composer-card{background:var(--surface);border:1.5px solid var(--border-2);border-radius:var(--r-2xl);box-shadow:var(--s-xl);overflow:hidden;transition:border-color var(--tx),box-shadow var(--tx)}
-.composer-card:focus-within{border-color:rgba(0,102,204,.4);box-shadow:var(--s-xl),0 0 0 4px rgba(0,102,204,.07)}
+.composer-card:focus-within{border-color:rgba(11,65,205,.4);box-shadow:var(--s-xl),0 0 0 4px rgba(11,65,205,.07)}
 .upload-bar{display:none;align-items:center;gap:8px;padding:10px 16px 0;font-size:12px;color:var(--blue);font-weight:500}
-.upload-name{background:var(--blue-light);border:1px solid rgba(0,102,204,.18);border-radius:var(--r);padding:2px 8px;font-size:11.5px}
+.upload-name{background:var(--blue-light);border:1px solid rgba(11,65,205,.18);border-radius:var(--r);padding:2px 8px;font-size:11.5px}
 .upload-rm{color:var(--t4);font-size:16px;line-height:1;transition:color var(--tx)}
 .upload-rm:hover{color:var(--red)}
 .composer-ta{width:100%;border:none;outline:none;resize:none;font-size:14.5px;color:var(--t1);line-height:1.6;background:transparent;padding:16px 20px 0;min-height:52px;max-height:200px;overflow-y:auto;transition:color .3s}
@@ -306,9 +307,11 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
 .sc-item-desc{font-size:11px;color:var(--t4)}
 .c-right{display:flex;align-items:center;gap:8px;margin-left:auto}
 .char-hint{font-size:11px;color:var(--t4)}
-.send-btn{width:36px;height:36px;border-radius:var(--r-xl);background:var(--blue);display:flex;align-items:center;justify-content:center;color:#fff;transition:all var(--tx);box-shadow:0 2px 8px rgba(0,102,204,.32);flex-shrink:0}
-.send-btn:hover:not(:disabled){background:var(--blue-h);transform:scale(1.05);box-shadow:0 4px 16px rgba(0,102,204,.42)}
+.send-btn{width:36px;height:36px;border-radius:var(--r-xl);background:var(--blue);display:flex;align-items:center;justify-content:center;color:#fff;transition:all var(--tx);box-shadow:0 2px 8px rgba(11,65,205,.32);flex-shrink:0}
+.send-btn:hover:not(:disabled){background:var(--blue-h);transform:scale(1.05);box-shadow:0 4px 16px rgba(11,65,205,.42)}
 .send-btn:disabled{background:var(--border-2);box-shadow:none;color:var(--t4)}
+.send-btn.stop{background:var(--t1);box-shadow:0 2px 8px rgba(15,25,35,.25)}
+.send-btn.stop:hover:not(:disabled){background:var(--red);box-shadow:0 4px 16px rgba(220,38,38,.35)}
 .composer-disc{text-align:center;font-size:11px;color:var(--t4);margin-top:8px;letter-spacing:.1px}
 
 /* ── COMMAND PALETTE ─────────────────────────────────────────── */
@@ -385,7 +388,7 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
 /* ── DRAG OVERLAY ────────────────────────────────────────────── */
 .drop-overlay{
   position:fixed;inset:0;z-index:500;
-  background:rgba(0,102,204,.09);border:3px dashed var(--blue);
+  background:rgba(11,65,205,.09);border:3px dashed var(--blue);
   display:flex;align-items:center;justify-content:center;
   opacity:0;pointer-events:none;transition:opacity .18s;border-radius:0;
 }
@@ -407,28 +410,90 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
   .cmdpal-card{animation:none}
 }
 
+/* ── TABLET & TOUCH RESPONSIVE ───────────────────────────────── */
+
+/* Enlarge tap targets; show hover-state UI that touch can't trigger */
+@media (hover: none) and (pointer: coarse) {
+  button,[role="button"]{touch-action:manipulation}
+  .hdr-btn{width:42px;height:42px}
+  .send-btn{width:42px;height:42px}
+  .tool-btn{width:40px;height:40px}
+  .act-btn,.fb-btn{padding:7px 11px}
+  .fu-chip{padding:9px 14px}
+  .conv-item{padding:12px 10px;min-height:44px}
+  .sc-item{padding:11px 10px;min-height:44px}
+  .sug-card{padding:16px}
+  /* Always visible — no hover required on touch */
+  .msg-meta{color:var(--t4)!important}
+  .act-time{color:var(--t4)!important}
+  .conv-act{opacity:1}
+}
+
+/* Tablet portrait and below (≤768px) */
+@media (max-width: 768px) {
+  :root{--col:100%}
+
+  .hdr{padding:0 12px;gap:6px}
+  .hdr-name{display:none}
+  .hdr-sep{display:none}
+  .hdr-model{font-size:10px;padding:4px 8px;gap:5px}
+  .hdr-title{max-width:110px}
+
+  .messages{padding:10px 12px 0}
+  .msg-row.user{padding-left:28px}
+
+  /* 16px prevents iOS Safari auto-zoom on textarea focus */
+  .composer-ta{font-size:16px;padding:14px 14px 0}
+  .composer-shell{padding:8px 10px 14px}
+  .composer-disc{font-size:10px}
+
+  .welcome{padding:36px 12px 24px}
+  .welcome h1{font-size:22px}
+  .welcome-sub{font-size:13.5px;max-width:100%;margin-bottom:28px}
+  .sug-grid{grid-template-columns:1fr 1fr;gap:8px}
+
+  /* Reposition scroll button to a simple centered anchor on narrow viewports */
+  .scroll-bottom-btn{left:50%;transform:translateX(-50%)}
+  .scroll-bottom-btn:hover{transform:translateX(-50%) translateY(-1px)}
+
+  .drawer{width:84vw;max-width:320px}
+
+  .toast-shelf{right:10px}
+  .cmdpal{padding-top:56px}
+  .cmdpal-card{margin:0 10px}
+  .drop-box{padding:28px 32px}
+}
+
+/* Phone (≤480px) — single-column suggestions, hide model badge */
+@media (max-width: 480px) {
+  .hdr-model{display:none}
+  .sug-grid{grid-template-columns:1fr}
+  .welcome h1{font-size:20px}
+  .auth-card{padding:28px 20px}
+}
+
 /* ─── AUTH OVERLAY ─────────────────────────────────────────────── */
 .auth-overlay{position:fixed;inset:0;z-index:2000;display:none;align-items:center;justify-content:center;
-  background:var(--bg);padding:24px}
+  background:var(--bg);padding:24px;overflow-y:auto;-webkit-overflow-scrolling:touch}
 .auth-overlay.show{display:flex}
 .auth-card{width:100%;max-width:380px;background:var(--surface);border:1px solid var(--border);
-  border-radius:var(--r-lg);padding:32px 28px;box-shadow:0 12px 40px rgba(15,25,35,.12)}
-.auth-brand{display:flex;align-items:center;gap:10px;margin-bottom:22px}
-.auth-brand .hdr-mark{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;
-  background:var(--accent,#0B41CD);color:#fff;font-weight:700}
+  border-radius:var(--r-lg);padding:32px 28px;box-shadow:0 12px 40px rgba(15,25,35,.12);margin:auto}
+.auth-brand{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+.auth-brand .roche-wordmark{height:38px}
 .auth-title{font-size:18px;font-weight:600;color:var(--t1);letter-spacing:-.3px}
 .auth-sub{font-size:13px;color:var(--t3);margin:2px 0 22px}
 .auth-field{margin-bottom:14px}
 .auth-field label{display:block;font-size:12px;font-weight:500;color:var(--t3);margin-bottom:6px}
-.auth-field input{width:100%;padding:10px 12px;border:1px solid var(--border-2);border-radius:var(--r-lg);
-  background:var(--surface-2);font-size:14px;color:var(--t1);outline:none;transition:border var(--tx)}
-.auth-field input:focus{border-color:var(--accent,#0B41CD)}
-.auth-btn{width:100%;padding:11px;border-radius:var(--r-lg);background:var(--t1);color:var(--bg);
-  font-size:14px;font-weight:600;margin-top:6px;transition:opacity var(--tx)}
-.auth-btn:hover{opacity:.9}
+/* 16px prevents iOS Safari auto-zoom on focus — critical for tablet login */
+.auth-field input{width:100%;padding:11px 12px;border:1px solid var(--border-2);border-radius:var(--r-lg);
+  background:var(--surface-2);font-size:16px;color:var(--t1);outline:none;transition:border var(--tx)}
+.auth-field input:focus{border-color:var(--blue)}
+.auth-btn{width:100%;padding:11px;border-radius:var(--r-lg);background:var(--blue);color:#fff;
+  font-size:14px;font-weight:600;margin-top:6px;transition:background var(--tx)}
+.auth-btn:hover{background:var(--blue-h)}
 .auth-btn:disabled{opacity:.5;cursor:default}
 .auth-toggle{text-align:center;font-size:13px;color:var(--t3);margin-top:18px}
-.auth-toggle a{color:var(--accent,#0B41CD);cursor:pointer;font-weight:500}
+.auth-toggle a{color:var(--blue);cursor:pointer;font-weight:500}
 .auth-err{font-size:12.5px;color:#DC2626;margin-top:10px;min-height:16px}
 
 /* ─── CONVERSATIONS DRAWER ─────────────────────────────────────── */
@@ -454,10 +519,35 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
 .conv-act{opacity:0;color:var(--t4);padding:3px;border-radius:6px;transition:opacity var(--tx),color var(--tx)}
 .conv-item:hover .conv-act{opacity:1}
 .conv-act:hover{color:var(--t1);background:var(--border)}
-.drawer-foot{border-top:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px}
-.drawer-user{font-size:12.5px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.drawer-foot{border-top:1px solid var(--border);padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.drawer-user-wrap{display:flex;align-items:center;gap:9px;min-width:0;flex:1}
+.user-avatar{width:30px;height:30px;border-radius:50%;flex-shrink:0;
+  background:linear-gradient(145deg,#1C50E0,#022366);color:#fff;font-size:11px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;letter-spacing:.3px}
+.drawer-user{font-size:12.5px;color:var(--t2);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .drawer-logout{font-size:12.5px;color:var(--t3);font-weight:500;white-space:nowrap}
 .drawer-logout:hover{color:#DC2626}
+
+/* Date group labels in the conversation list (ChatGPT-style) */
+.conv-group{padding:14px 10px 4px;font-size:10.5px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.7px;color:var(--t4)}
+.conv-group:first-child{padding-top:6px}
+
+/* ── DOCKED SIDEBAR (desktop ≥1100px) ──────────────────────────
+   The conversations drawer becomes a persistent left sidebar, like
+   ChatGPT / Claude. The hamburger toggles it; below 1100px it falls
+   back to the overlay drawer. */
+:root{--sbw:280px}
+@media (min-width:1100px){
+  body.docked .drawer{transform:none;width:var(--sbw);z-index:140;box-shadow:none;background:var(--surface)}
+  body.docked .drawer-scrim{display:none}
+  body.docked .hdr{left:var(--sbw)}
+  body.docked .search-bar,
+  body.docked .pinned-strip,
+  body.docked .composer-shell{left:var(--sbw)}
+  body.docked .conversation{margin-left:var(--sbw)}
+  body.docked .scroll-bottom-btn{left:calc(50% + var(--sbw)/2)}
+}
 </style>
 </head>
 <body>
@@ -466,24 +556,29 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
 <div class="auth-overlay" id="authOverlay" role="dialog" aria-modal="true" aria-label="Sign in">
   <div class="auth-card">
     <div class="auth-brand">
-      <div class="hdr-mark">R</div>
-      <span class="auth-title">Roche Scientific AI</span>
+      <svg class="roche-wordmark" viewBox="0 0 122 64" fill="none" aria-hidden="true">
+        <polygon points="14,3 108,3 119,32 108,61 14,61 3,32" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/>
+        <text x="61" y="42" text-anchor="middle" font-size="27" font-weight="700" letter-spacing=".5" fill="currentColor" font-family="Inter,sans-serif">Roche</text>
+      </svg>
+      <span class="auth-title">Scientific AI</span>
     </div>
     <div class="auth-sub" id="authSub">Sign in to your account</div>
-    <div class="auth-field" id="authNameField" style="display:none">
-      <label for="authName">Name</label>
-      <input type="text" id="authName" autocomplete="name" placeholder="Dr. Jane Smith">
-    </div>
-    <div class="auth-field">
-      <label for="authEmail">Email</label>
-      <input type="email" id="authEmail" autocomplete="email" placeholder="you@roche.com">
-    </div>
-    <div class="auth-field">
-      <label for="authPassword">Password</label>
-      <input type="password" id="authPassword" autocomplete="current-password" placeholder="••••••••">
-    </div>
-    <button class="auth-btn" id="authSubmit" onclick="submitAuth()">Sign in</button>
-    <div class="auth-err" id="authErr" role="alert"></div>
+    <form id="authForm" novalidate onsubmit="event.preventDefault();submitAuth()">
+      <div class="auth-field" id="authNameField" style="display:none">
+        <label for="authName">Name</label>
+        <input type="text" id="authName" autocomplete="name" placeholder="Dr. Jane Smith">
+      </div>
+      <div class="auth-field">
+        <label for="authEmail">Email</label>
+        <input type="email" id="authEmail" autocomplete="email" inputmode="email" autocapitalize="none" placeholder="you@roche.com">
+      </div>
+      <div class="auth-field">
+        <label for="authPassword">Password</label>
+        <input type="password" id="authPassword" autocomplete="current-password" placeholder="••••••••">
+      </div>
+      <button class="auth-btn" id="authSubmit" type="submit">Sign in</button>
+      <div class="auth-err" id="authErr" role="alert"></div>
+    </form>
     <div class="auth-toggle" id="authToggle">
       No account? <a onclick="setAuthMode('register')">Create one</a>
     </div>
@@ -495,7 +590,7 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
 <aside class="drawer" id="drawer" aria-label="Conversations">
   <div class="drawer-hdr">
     <h3>Conversations</h3>
-    <button class="hdr-btn" onclick="closeDrawer()" aria-label="Close">
+    <button class="hdr-btn" onclick="dismissDrawer()" aria-label="Close sidebar">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
@@ -505,19 +600,25 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
   </button>
   <div class="drawer-list" id="convList"></div>
   <div class="drawer-foot">
-    <span class="drawer-user" id="drawerUser"></span>
+    <div class="drawer-user-wrap">
+      <div class="user-avatar" id="userAvatar" aria-hidden="true"></div>
+      <span class="drawer-user" id="drawerUser"></span>
+    </div>
     <button class="drawer-logout" onclick="logout()">Sign out</button>
   </div>
 </aside>
 
 <!-- HEADER -->
 <header class="hdr" role="banner">
-  <button class="hdr-btn" id="drawerBtn" title="Conversations" aria-label="Conversations" onclick="openDrawer()">
+  <button class="hdr-btn" id="drawerBtn" title="Conversations" aria-label="Conversations" onclick="toggleSidebar()">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
   </button>
   <a href="/" class="hdr-logo" aria-label="Roche Scientific AI">
-    <div class="hdr-mark" aria-hidden="true">R</div>
-    <span class="hdr-name">Roche <em>Scientific AI</em></span>
+    <svg class="roche-wordmark" viewBox="0 0 122 64" fill="none" aria-hidden="true">
+      <polygon points="14,3 108,3 119,32 108,61 14,61 3,32" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/>
+      <text x="61" y="42" text-anchor="middle" font-size="27" font-weight="700" letter-spacing=".5" fill="currentColor" font-family="Inter,sans-serif">Roche</text>
+    </svg>
+    <span class="hdr-name">Scientific <em>AI</em></span>
   </a>
   <div class="hdr-sep" aria-hidden="true"></div>
   <span class="hdr-title" id="convTitle"></span>
@@ -676,6 +777,17 @@ let autoScroll = true;
 let searchMatches = [], searchIdx = 0;
 let pendingFile = null, voiceOn = false, recog = null;
 let histIdx = -1; // prompt history navigation index
+let streamCtrl = null; // AbortController for the in-flight stream (Stop button)
+
+/* Roche brand marks (inline SVG, drawn in currentColor) */
+const ROCHE_WORDMARK = `<svg class="roche-wordmark" viewBox="0 0 122 64" fill="none" aria-hidden="true">
+  <polygon points="14,3 108,3 119,32 108,61 14,61 3,32" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/>
+  <text x="61" y="42" text-anchor="middle" font-size="27" font-weight="700" letter-spacing=".5" fill="currentColor" font-family="Inter,sans-serif">Roche</text>
+</svg>`;
+const ROCHE_HEX_R = `<svg width="20" height="20" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+  <polygon points="15,5 49,5 61,32 49,59 15,59 3,32" stroke="currentColor" stroke-width="6" stroke-linejoin="round"/>
+  <text x="32" y="44" text-anchor="middle" font-size="30" font-weight="700" fill="currentColor" font-family="Inter,sans-serif">R</text>
+</svg>`;
 
 const $msgs   = document.getElementById('messages');
 const $input  = document.getElementById('msgInput');
@@ -709,8 +821,12 @@ async function checkAuth() {
 
 async function bootApp() {
   hideAuth();
-  document.getElementById('drawerUser').textContent =
-    currentUser.display_name || currentUser.email;
+  const who = currentUser.display_name || currentUser.email;
+  document.getElementById('drawerUser').textContent = who;
+  document.getElementById('userAvatar').textContent = initials(who);
+
+  // Desktop: dock the sidebar (ChatGPT-style) unless the user collapsed it.
+  if (localStorage.getItem(SK_SB) !== '0') document.body.classList.add('docked');
 
   await loadConversations();
 
@@ -813,6 +929,18 @@ async function loadConversations() {
   renderConvList();
 }
 
+/* ChatGPT-style date buckets for the sidebar (sessions arrive newest-first). */
+function convGroupLabel(iso) {
+  const d = new Date(iso);
+  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+  const day = 864e5;
+  if (d >= startOfToday) return 'Today';
+  if (d >= new Date(startOfToday - day)) return 'Yesterday';
+  if (d >= new Date(startOfToday - 7 * day)) return 'Previous 7 days';
+  if (d >= new Date(startOfToday - 30 * day)) return 'Previous 30 days';
+  return 'Older';
+}
+
 function renderConvList() {
   const el = document.getElementById('convList');
   el.innerHTML = '';
@@ -820,7 +948,16 @@ function renderConvList() {
     el.innerHTML = '<div style="padding:14px;color:var(--t4);font-size:12.5px">No conversations yet.</div>';
     return;
   }
+  let lastGroup = null;
   currentSessions.forEach(s => {
+    const group = convGroupLabel(s.created_at);
+    if (group !== lastGroup) {
+      lastGroup = group;
+      const lbl = document.createElement('div');
+      lbl.className = 'conv-group';
+      lbl.textContent = group;
+      el.appendChild(lbl);
+    }
     const item = document.createElement('div');
     item.className = 'conv-item' + (s.id === sessionId ? ' active' : '');
     item.innerHTML = `
@@ -829,7 +966,7 @@ function renderConvList() {
         onclick="event.stopPropagation();renameConversation('${s.id}')">✎</button>
       <button class="conv-act" title="Delete" aria-label="Delete"
         onclick="event.stopPropagation();deleteConversation('${s.id}')">🗑</button>`;
-    item.onclick = () => { openConversation(s.id); closeDrawer(); };
+    item.onclick = () => { openConversation(s.id); if (!isDocked()) closeDrawer(); };
     el.appendChild(item);
   });
 }
@@ -902,7 +1039,32 @@ async function deleteConversation(id) {
   }
 }
 
-/* ─── DRAWER ─────────────────────────────────────────────────── */
+/* ─── DRAWER / DOCKED SIDEBAR ────────────────────────────────── */
+const SK_SB = 'roche_sidebar';
+const isDesktop = () => window.matchMedia('(min-width:1100px)').matches;
+const isDocked  = () => isDesktop() && document.body.classList.contains('docked');
+
+/* Hamburger: docks/undocks the sidebar on desktop, overlay drawer on touch. */
+function toggleSidebar() {
+  if (isDesktop()) {
+    const on = document.body.classList.toggle('docked');
+    localStorage.setItem(SK_SB, on ? '1' : '0');
+    if (on) loadConversations();
+  } else {
+    openDrawer();
+  }
+}
+
+/* The drawer's × button: collapse the docked sidebar, or close the overlay. */
+function dismissDrawer() {
+  if (isDocked()) {
+    document.body.classList.remove('docked');
+    localStorage.setItem(SK_SB, '0');
+  } else {
+    closeDrawer();
+  }
+}
+
 function openDrawer() {
   loadConversations();
   document.getElementById('drawer').classList.add('show');
@@ -923,11 +1085,14 @@ function renderWelcome() {
     { icon:'⚗️', title:'Mechanism of action',         desc:'Molecular and cellular mechanisms',                 q:'Explain the mechanism of action of bispecific T-cell engagers in oncology.' },
     { icon:'📋', title:'Evidence summary',            desc:'Evidence-based clinical summary',                   q:'What clinical evidence supports the use of bevacizumab in glioblastoma?' },
   ];
+  const hour = new Date().getHours();
+  const greet = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  const first = (currentUser?.display_name || currentUser?.email || '').split('@')[0].trim().split(/\s+/)[0];
   const wrap = document.createElement('div');
   wrap.id = 'welcomeScreen';
   wrap.innerHTML = `<div class="welcome">
-    <div class="welcome-emblem" aria-hidden="true">R</div>
-    <h1>Roche <em>Scientific AI</em></h1>
+    <div class="welcome-emblem" aria-hidden="true">${ROCHE_WORDMARK}</div>
+    <h1>${greet}${first ? `, <em>${esc(first)}</em>` : ''}</h1>
     <p class="welcome-sub">Your intelligent scientific partner. Ask about medical evidence, clinical studies, treatment landscapes, and research insights.</p>
     <div class="sug-grid" role="list">
       ${items.map(s=>`<button class="sug-card" role="listitem" onclick="sendMessage(${JSON.stringify(s.q)})" aria-label="${s.title}">
@@ -967,7 +1132,7 @@ function renderAi(m, stream = true) {
 
   row.innerHTML = `
     <div class="ai-row">
-      <div class="ai-avatar${stream ? ' pulsing' : ''}" id="av${m.ts}">R</div>
+      <div class="ai-avatar${stream ? ' pulsing' : ''}" id="av${m.ts}">${ROCHE_HEX_R}</div>
       <div class="ai-content">
         <div class="response-card" id="card${m.ts}">
           <div class="response-label">
@@ -1054,7 +1219,7 @@ function showThinking() {
   el.id = 'thinkRow';
   el.innerHTML = `
     <div class="thinking-row" aria-live="polite">
-      <div class="ai-avatar">R</div>
+      <div class="ai-avatar">${ROCHE_HEX_R}</div>
       <div class="thinking-bubble">
         <span class="thinking-txt" id="thinkTxt">${STAGES[0]}</span>
         <div class="thinking-dots" aria-hidden="true"><span></span><span></span><span></span></div>
@@ -1078,7 +1243,7 @@ async function sendMessage(text) {
   text = (text || $input.value).trim();
   if (!text || busy) return;
   document.getElementById('welcomeScreen')?.remove();
-  busy = true; $send.disabled = true; histIdx = -1;
+  busy = true; setSendState(true); histIdx = -1;
   $input.value = ''; autoResize($input);
   localStorage.removeItem(SK_DRAFT);
 
@@ -1092,10 +1257,12 @@ async function sendMessage(text) {
   showThinking(); scrollBottom();
 
   let aiMsg = null, handles = null, errCat = null;
+  streamCtrl = new AbortController();
   try {
     const r = await fetch(`/api/sessions/${sessionId}/chat/stream`, {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ message: text }),
+      signal: streamCtrl.signal,
     });
     if (!r.ok || !r.body) { errCat = 'connection'; throw new Error(r.status); }
 
@@ -1139,20 +1306,52 @@ async function sendMessage(text) {
       }
     }
     if (errCat) throw new Error('stream-error');
-  } catch {
+  } catch (err) {
     hideThinking();
+    const aborted = err && err.name === 'AbortError';
     if (handles && aiMsg && aiMsg.content) {
       // Partial answer already on screen — keep what we streamed.
       delete aiMsg.live; persist(); handles.finalize();
+      if (aborted) {
+        // The server's generator was abandoned before it could persist this
+        // turn — save the partial so reload shows what the user saw.
+        fetch(`/api/sessions/${sessionId}/messages`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ content: aiMsg.content, language: aiMsg.language }),
+        }).catch(() => {});
+      }
+    } else if (aborted) {
+      // User pressed Stop before any output arrived — no error card needed.
     } else {
       const content = STREAM_ERR_MSG[errCat] || STREAM_ERR_MSG.connection;
       const errMsg = { role:'ai', content, ts:Date.now(), type:'error', citations:[] };
       messages.push(errMsg); persist(); renderAi(errMsg, false);
     }
   } finally {
-    busy = false; $send.disabled = !$input.value.trim();
+    streamCtrl = null;
+    busy = false; setSendState(false);
+    $send.disabled = !$input.value.trim();
   }
 }
+
+/* Send / Stop button: tap-to-send (touch devices have no Enter shortcut)
+   and tap-to-stop while a response is streaming. */
+const SEND_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>';
+const STOP_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+
+function setSendState(streaming) {
+  $send.classList.toggle('stop', streaming);
+  $send.innerHTML = streaming ? STOP_SVG : SEND_SVG;
+  const label = streaming ? 'Stop generating' : 'Send (Enter)';
+  $send.title = label;
+  $send.setAttribute('aria-label', label);
+  if (streaming) $send.disabled = false;
+}
+
+$send.addEventListener('click', () => {
+  if (busy) { streamCtrl?.abort(); return; }
+  sendMessage();
+});
 
 /* User-facing copy per stream error category (see api._error_category). */
 const STREAM_ERR_MSG = {
@@ -1161,17 +1360,6 @@ const STREAM_ERR_MSG = {
   internal:   'Something went wrong while generating the response. Please try again.',
   connection: 'There was a problem reaching the scientific knowledge base. Please check your connection and try again.',
 };
-
-/* Parse one SSE frame ("event: x\ndata: {...}") into {event, data}. */
-function parseSSEFrame(frame) {
-  let event = 'message', data = '';
-  for (const line of frame.split('\n')) {
-    if (line.startsWith('event:'))     event = line.slice(6).trim();
-    else if (line.startsWith('data:')) data += line.slice(5).trim();
-  }
-  if (!data) return null;
-  try { return { event, data: JSON.parse(data) }; } catch { return null; }
-}
 
 /* Parse one SSE frame ("event: x\ndata: {...}") into {event, data}. */
 function parseSSEFrame(frame) {
@@ -1506,14 +1694,14 @@ function updateTopPad() {
 /* ─── INPUT ──────────────────────────────────────────────────── */
 $input.addEventListener('input', () => {
   autoResize($input);
-  $send.disabled = !$input.value.trim() || busy;
+  if (!busy) $send.disabled = !$input.value.trim();
   document.getElementById('charHint').textContent = $input.value.length > 800 ? $input.value.length + ' chars' : '';
   localStorage.setItem(SK_DRAFT, $input.value);
   histIdx = -1; // reset history nav on manual edit
 });
 
 $input.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!$send.disabled) sendMessage(); return; }
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!busy && !$send.disabled) sendMessage(); return; }
   // Prompt history: Up/Down when at start/end of textarea
   const userMsgs = messages.filter(m => m.role === 'user');
   if (e.key === 'ArrowUp' && $input.selectionStart === 0 && userMsgs.length) {
@@ -1539,7 +1727,7 @@ async function newConversation() {
   if (!s) return;
   await loadConversations();
   await openConversation(s.id);
-  closeDrawer();
+  if (!isDocked()) closeDrawer();
 }
 
 document.getElementById('btnNew').addEventListener('click', newConversation);
@@ -1743,6 +1931,10 @@ function pickFU(s){ return FU[s.split('').reduce((a,c)=>a+c.charCodeAt(0),0)%FU.
 
 /* ─── UTILS ──────────────────────────────────────────────────── */
 function persist() { localStorage.setItem(SK_MSGS, JSON.stringify(messages.slice(-60))); }
+function initials(s) {
+  const parts = String(s).split('@')[0].trim().split(/[\s._-]+/).filter(Boolean);
+  return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || 'U';
+}
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function relTime(ts) {
   const d=(Date.now()-ts)/1000;
