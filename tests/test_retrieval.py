@@ -21,7 +21,10 @@ from vector_store import ChromaVectorStore
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DOCS_PATH = REPO_ROOT / "data" / "docs"
+# A frozen copy of the markdown corpus, kept as a test fixture. The production
+# app no longer ships local docs (it ingests from Google Drive), but these
+# tests need a deterministic, offline corpus to assert retrieval behaviour.
+DOCS_PATH = REPO_ROOT / "tests" / "fixtures" / "docs"
 
 
 @pytest.fixture(scope="module")

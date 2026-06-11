@@ -30,7 +30,8 @@ from vector_store import ChromaVectorStore
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DOCS_PATH = REPO_ROOT / "data" / "docs"
+# Offline markdown corpus fixture (production ingests from Google Drive instead).
+DOCS_PATH = REPO_ROOT / "tests" / "fixtures" / "docs"
 
 
 # ---------------------------------------------------------------------------

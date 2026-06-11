@@ -29,10 +29,23 @@ def _settings(**overrides) -> Settings:
     return Settings(_env_file=None, **base)
 
 
-def test_defaults_to_all_with_drive_configured():
-    # Default is now "all": local + Drive combined when Drive is configured.
+def test_defaults_to_google_drive():
+    # Default is now Drive-only — production ingests from Google Drive.
     src = build_source(
         _settings(drive_folder_id="folder-123", google_service_account_json="sa.json")
+    )
+    assert isinstance(src, GoogleDriveSource)
+    assert src.folder_id == "folder-123"
+
+
+def test_all_combines_local_and_drive():
+    # "all" still combines local + Drive when Drive is configured.
+    src = build_source(
+        _settings(
+            document_source="all",
+            drive_folder_id="folder-123",
+            google_service_account_json="sa.json",
+        )
     )
     assert isinstance(src, CompositeSource)
     kinds = [type(s).__name__ for s in src._sources]

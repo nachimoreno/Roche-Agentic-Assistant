@@ -41,12 +41,12 @@ class Settings(BaseSettings):
     retrieval_mode: Literal["dense", "hybrid"] = "hybrid"
 
     # ---- Document source ----------------------------------------------
-    # Which DocumentSource to ingest from. "local" reads markdown from
-    # docs_path; "google_drive" pulls from a Shared Drive folder; "all"
-    # ingests from both. "all" only adds Drive when drive_folder_id is set,
-    # so it degrades to local-only if Drive isn't configured.
-    document_source: Literal["local", "google_drive", "all"] = "all"
-    docs_path: str = "data/docs"
+    # Which DocumentSource to ingest from. "google_drive" (default) pulls from
+    # a Drive folder — the production source of truth. "local" reads markdown
+    # from docs_path; "all" ingests from both (only adds Drive when
+    # drive_folder_id is set, so it degrades to local-only if unconfigured).
+    document_source: Literal["local", "google_drive", "all"] = "google_drive"
+    docs_path: str = "tests/fixtures/docs"
     # Google Drive (only used when document_source == "google_drive").
     drive_folder_id: Optional[str] = None
     drive_recursive: bool = True
