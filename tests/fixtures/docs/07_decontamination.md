@@ -1,3 +1,8 @@
+---
+process: decontamination
+department: lab-operations
+---
+
 # Decontamination Procedures
 
 Decontamination is the response to a spill, contamination event, or

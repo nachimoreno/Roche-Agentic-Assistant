@@ -21,7 +21,15 @@ from sqlalchemy import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session as DbSession, select
 
-from db import FeedbackEntry, Session, Turn, TurnCitation, User, utcnow
+from db import (
+    FeedbackAttribution,
+    FeedbackEntry,
+    Session,
+    Turn,
+    TurnCitation,
+    User,
+    utcnow,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -207,6 +215,62 @@ class FeedbackRepository:
             db.add(entry)
             db.commit()
 
+    def replace_attributions(
+        self,
+        feedback_id: UUID,
+        method: str,
+        rows,
+        *,
+        tenant_id: Optional[UUID] = None,
+    ) -> None:
+        """Set a feedback's `attribution_method` and (re)write its split rows.
+
+        Idempotent: any prior attribution rows for this feedback are removed
+        first, so re-rating a turn recomputes cleanly instead of stacking.
+        `rows` is any iterable of objects exposing source/section/process/
+        department/weight/method/distance (e.g. `attribution.AttributionRow`).
+        """
+        rows = list(rows)
+        with DbSession(self._engine) as db:
+            entry = db.get(FeedbackEntry, feedback_id)
+            if entry is not None:
+                entry.attribution_method = method
+                db.add(entry)
+            existing = db.exec(
+                select(FeedbackAttribution).where(
+                    FeedbackAttribution.feedback_id == feedback_id
+                )
+            ).all()
+            for row in existing:
+                db.delete(row)
+            for r in rows:
+                db.add(
+                    FeedbackAttribution(
+                        feedback_id=feedback_id,
+                        tenant_id=tenant_id,
+                        source=r.source,
+                        section=r.section,
+                        process=r.process,
+                        department=r.department,
+                        weight=r.weight,
+                        method=r.method,
+                        distance=r.distance,
+                    )
+                )
+            db.commit()
+        logger.info(
+            "feedback.attributed",
+            extra={"feedback_id": str(feedback_id), "method": method, "rows": len(rows)},
+        )
+
+    def attributions_for(self, feedback_id: UUID) -> list[FeedbackAttribution]:
+        with DbSession(self._engine) as db:
+            stmt = select(FeedbackAttribution).where(
+                FeedbackAttribution.feedback_id == feedback_id,
+                FeedbackAttribution.deleted_at.is_(None),  # type: ignore[union-attr]
+            )
+            return list(db.exec(stmt).all())
+
 
 # ---------------------------------------------------------------------------
 # SessionRepository
@@ -283,31 +347,46 @@ class SessionRepository:
     def add_citations(
         self,
         turn_id: UUID,
-        citations: list[tuple[str, Optional[str]]],
+        citations: list[tuple[str, Optional[str], Optional[str], Optional[str]]],
         *,
         tenant_id: Optional[UUID] = None,
     ) -> None:
         """Persist the documents an assistant turn cited.
 
-        `citations` is an ordered list of `(source, section)` tuples — kept as
-        plain tuples so this layer stays decoupled from the agent's `Citation`.
-        `rank` follows the order (0 = top-ranked). `process`/`department` are
-        resolved in Phase 2; left None here.
+        `citations` is an ordered list of `(source, section, process,
+        department)` tuples — kept as plain tuples so this layer stays decoupled
+        from the agent's `Citation`. `rank` follows the order (0 = top-ranked).
+        `process`/`department` are resolved by the caller from doc front-matter.
         """
         if not citations:
             return
         with DbSession(self._engine) as db:
-            for rank, (source, section) in enumerate(citations):
+            for rank, (source, section, process, department) in enumerate(citations):
                 db.add(
                     TurnCitation(
                         turn_id=turn_id,
                         tenant_id=tenant_id,
                         source=source,
                         section=section,
+                        process=process,
+                        department=department,
                         rank=rank,
                     )
                 )
             db.commit()
+
+    def citations_for_turn(self, turn_id: UUID) -> list[TurnCitation]:
+        """The citations recorded for an assistant turn, ranked (0 first)."""
+        with DbSession(self._engine) as db:
+            stmt = (
+                select(TurnCitation)
+                .where(
+                    TurnCitation.turn_id == turn_id,
+                    TurnCitation.deleted_at.is_(None),  # type: ignore[union-attr]
+                )
+                .order_by(TurnCitation.rank)  # type: ignore[union-attr]
+            )
+            return list(db.exec(stmt).all())
 
     def messages(self, session_id: UUID, *, include_deleted: bool = False) -> list[Turn]:
         """All turns for a session, oldest first."""

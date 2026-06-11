@@ -1,3 +1,8 @@
+---
+process: instrument-booking
+department: lab-operations
+---
+
 # Booking Laboratory Instruments
 
 Shared laboratory instruments are reserved through the Instrument

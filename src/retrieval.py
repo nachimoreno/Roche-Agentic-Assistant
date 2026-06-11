@@ -77,6 +77,10 @@ class DocumentStore:
         self._manifest_path = Path(manifest_path)
         # When set, retrieval is hybrid (dense + BM25). When None, dense-only.
         self._lexical = lexical_index
+        # source_id -> {"process", "department", "title"} for citation→process
+        # attribution. Populated on every ingest for *all* docs seen (including
+        # unchanged ones that skip re-embedding).
+        self._doc_meta: dict[str, dict[str, Optional[str]]] = {}
 
     # ------------------------------------------------------------------
     # Ingestion
@@ -91,6 +95,14 @@ class DocumentStore:
 
         for doc in self._source.list_documents():
             seen += 1
+            # Record process/department for every doc seen, even if its content
+            # is unchanged and we skip re-embedding below — the citation→process
+            # lookup must cover the whole corpus, not just docs touched this run.
+            self._doc_meta[doc.id] = {
+                "process": doc.metadata.get("process"),
+                "department": doc.metadata.get("department"),
+                "title": doc.title,
+            }
             content_hash = _hash(doc.content)
             entry = {
                 "hash": content_hash,
@@ -162,6 +174,14 @@ class DocumentStore:
             },
         )
         return report
+
+    def doc_metadata(self, source_id: str) -> Optional[dict[str, Optional[str]]]:
+        """Process/department/title for a document id, or None if unknown.
+
+        Populated during `ingest`; the key is `SourceDocument.id`, which is also
+        what the agent emits as `Citation.source`.
+        """
+        return self._doc_meta.get(source_id)
 
     # ------------------------------------------------------------------
     # Retrieval
@@ -263,17 +283,20 @@ def _chunk_document(doc: SourceDocument):
         sub_chunks = _split_long(body, _MAX_CHUNK_CHARS)
         for chunk_index, text in enumerate(sub_chunks):
             chunk_id = f"{doc.id}::{section_index}::{chunk_index}"
-            yield _DocChunk(
-                chunk_id=chunk_id,
-                text=text,
-                metadata={
-                    "source_id": doc.id,
-                    "title": doc.title,
-                    "section": heading or doc.title,
-                    "section_index": section_index,
-                    "chunk_index": chunk_index,
-                },
-            )
+            metadata = {
+                "source_id": doc.id,
+                "title": doc.title,
+                "section": heading or doc.title,
+                "section_index": section_index,
+                "chunk_index": chunk_index,
+            }
+            # Carry process/department onto each chunk so the embedding fallback
+            # can read them off the nearest chunk for orphan feedback.
+            for key in ("process", "department"):
+                value = doc.metadata.get(key)
+                if value is not None:
+                    metadata[key] = value
+            yield _DocChunk(chunk_id=chunk_id, text=text, metadata=metadata)
 
 
 def _split_by_h2(text: str) -> list[tuple[str, str]]:

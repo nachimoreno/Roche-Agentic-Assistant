@@ -90,6 +90,33 @@ def test_reingest_is_idempotent(document_store):
 
 
 # ---------------------------------------------------------------------------
+# Front-matter labels (process / department) — feedback-attribution support
+# ---------------------------------------------------------------------------
+
+def test_doc_metadata_exposes_front_matter_labels(document_store):
+    meta = document_store.doc_metadata("06_cleaning_lab_devices.md")
+    assert meta is not None
+    assert meta["process"] == "equipment-cleaning"
+    assert meta["department"] == "lab-operations"
+    assert document_store.doc_metadata("does-not-exist.md") is None
+
+
+def test_chunks_carry_process_and_department(document_store):
+    chunks = document_store.retrieve("how do I clean the centrifuge", k=3)
+    cleaning = next(
+        c for c in chunks if c.metadata.get("source_id") == "06_cleaning_lab_devices.md"
+    )
+    assert cleaning.metadata.get("process") == "equipment-cleaning"
+    assert cleaning.metadata.get("department") == "lab-operations"
+
+
+def test_front_matter_stripped_from_embedded_body(document_store):
+    # The YAML block must not leak into chunk text (it would pollute retrieval).
+    chunks = document_store.retrieve("how do I clean the centrifuge", k=3)
+    assert all("department:" not in c.text for c in chunks)
+
+
+# ---------------------------------------------------------------------------
 # Hybrid retrieval (dense + BM25)
 # ---------------------------------------------------------------------------
 

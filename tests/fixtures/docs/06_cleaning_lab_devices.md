@@ -1,3 +1,8 @@
+---
+process: equipment-cleaning
+department: lab-operations
+---
+
 # Cleaning Laboratory Devices
 
 Routine cleaning of laboratory devices reduces contamination risk and

@@ -1,3 +1,8 @@
+---
+process: internal-apps
+department: it
+---
+
 # Navigating Internal Applications
 
 Scientists rely on several specialized internal applications during a

@@ -1,3 +1,8 @@
+---
+process: assistant-overview
+department: it
+---
+
 # What the Assistant Can Do
 
 This document describes what the Roche Scientist Assistant can help with

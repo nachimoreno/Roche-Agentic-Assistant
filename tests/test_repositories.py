@@ -201,22 +201,20 @@ def test_get_turn_returns_turn(sessions):
     assert sessions.get_turn(new_id()) is None      # unknown id
 
 
-def test_add_citations_persists_ranked_rows(engine, sessions):
+def test_add_citations_persists_ranked_rows_with_labels(engine, sessions):
     sid = new_id()
     sessions.get_or_create(sid)
     t = sessions.append_turn(sid, "assistant", "answer", language="english")
-    sessions.add_citations(t.id, [("a.md", "Intro"), ("b.md", None)])
+    sessions.add_citations(
+        t.id,
+        [("a.md", "Intro", "onboarding", "it"), ("b.md", None, None, None)],
+    )
 
-    with DbSession(engine) as db:
-        rows = db.exec(
-            select(TurnCitation)
-            .where(TurnCitation.turn_id == t.id)
-            .order_by(TurnCitation.rank)
-        ).all()
+    rows = sessions.citations_for_turn(t.id)
     assert [r.source for r in rows] == ["a.md", "b.md"]
     assert [r.rank for r in rows] == [0, 1]
-    # Process/department are resolved later (Phase 2); None at capture time.
-    assert rows[0].process is None
+    assert (rows[0].process, rows[0].department) == ("onboarding", "it")
+    assert rows[1].process is None
 
 
 def test_add_citations_noop_on_empty(engine, sessions):
@@ -224,9 +222,36 @@ def test_add_citations_noop_on_empty(engine, sessions):
     sessions.get_or_create(sid)
     t = sessions.append_turn(sid, "assistant", "answer", language="english")
     sessions.add_citations(t.id, [])
-    with DbSession(engine) as db:
-        rows = db.exec(select(TurnCitation).where(TurnCitation.turn_id == t.id)).all()
-    assert rows == []
+    assert sessions.citations_for_turn(t.id) == []
+
+
+def test_replace_attributions_sets_method_and_rows(sessions, feedback):
+    from attribution import AttributionRow
+
+    sid = new_id()
+    sessions.get_or_create(sid)
+    t = sessions.append_turn(sid, "assistant", "answer", language="english")
+    entry = feedback.upsert_rating(
+        turn_id=t.id, session_id=sid, rating="down", language="english"
+    )
+
+    rows = [
+        AttributionRow("a.md", "Intro", "onboarding", "it", 0.5, "citation"),
+        AttributionRow("b.md", "Setup", "onboarding", "it", 0.5, "citation"),
+    ]
+    feedback.replace_attributions(entry.id, "citation", rows)
+
+    got = feedback.attributions_for(entry.id)
+    assert len(got) == 2
+    assert abs(sum(r.weight for r in got) - 1.0) < 1e-9
+    assert {r.process for r in got} == {"onboarding"}
+
+    # Re-running replaces rather than stacks.
+    feedback.replace_attributions(
+        entry.id, "embedding", [AttributionRow("c.md", None, "sample-stock", "lab", 1.0, "embedding", 0.2)]
+    )
+    got2 = feedback.attributions_for(entry.id)
+    assert len(got2) == 1 and got2[0].method == "embedding"
 
 
 def test_upsert_rating_is_idempotent_per_turn(sessions, feedback):

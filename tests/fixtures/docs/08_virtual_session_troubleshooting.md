@@ -1,3 +1,8 @@
+---
+process: virtual-sessions
+department: it
+---
+
 # Virtual Session Troubleshooting
 
 Many laboratory workflows depend on virtual sessions: remote desktops

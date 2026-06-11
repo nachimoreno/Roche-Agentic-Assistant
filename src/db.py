@@ -104,6 +104,28 @@ class FeedbackEntry(SQLModel, table=True):
     deleted_at: Optional[datetime] = Field(default=None, index=True)
 
 
+class FeedbackAttribution(SQLModel, table=True):
+    """One weighted row per document a piece of feedback implicates.
+
+    Blame is *split*: a feedback citing N docs writes N rows of weight 1/N, so
+    aggregating `SUM(weight)` by process/department/source lets genuinely
+    problematic docs rise above the noise. An embedding-resolved orphan writes a
+    single row of weight 1.0. Method is "citation" or "embedding".
+    """
+    id: UUID = Field(default_factory=new_id, primary_key=True)
+    feedback_id: UUID = Field(foreign_key="feedbackentry.id", index=True)
+    tenant_id: Optional[UUID] = Field(default=None, index=True)
+    source: str = Field(index=True)              # the implicated document
+    section: Optional[str] = Field(default=None)
+    process: Optional[str] = Field(default=None, index=True)
+    department: Optional[str] = Field(default=None, index=True)
+    weight: float = Field(default=1.0)
+    method: str = Field(index=True)              # "citation" | "embedding"
+    distance: Optional[float] = Field(default=None)   # embedding distance, if any
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    deleted_at: Optional[datetime] = Field(default=None, index=True)
+
+
 class TurnCitation(SQLModel, table=True):
     """The documents an assistant turn cited — the link that lets a rating
     reach the doc, and therefore the process/department, it concerns.

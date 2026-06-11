@@ -295,8 +295,25 @@ needed for the analytics math:
    stream/`MessageOut`), `static/index.html` (live thumbs + down-vote comment
    box). Tests in `test_repositories.py`, `test_orchestrator.py`, `test_api.py`.
    `User.role` column lands here; admin *gating* is wired in Phase 3.
-2. **Attribute** — front-matter parsing (+ non-markdown fallback OD-2);
-   citation→process join; embedding fallback + `attribution_method`.
+2. **Attribute** — front-matter parsing; citation→process join; embedding
+   fallback + `attribution_method`. **✅ DONE (against fixtures)** —
+   `document_source.py` (`parse_front_matter`, `LocalMarkdownSource` strips the
+   block + surfaces `process`/`department`), `retrieval.py` (`DocumentStore`
+   builds a `source_id → {process, department, title}` lookup via
+   `doc_metadata`; chunks carry the labels), `db.py` (`FeedbackAttribution`
+   weighted-split table), `attribution.py` (new `AttributionResolver` —
+   `resolve_from_citations` 1/N split, `resolve_from_text` nearest-doc),
+   `repositories.py` (`add_citations` now carries labels, `citations_for_turn`,
+   `replace_attributions`, `attributions_for`), `orchestrator.py` (citation
+   join at answer time; embedding attribution for NLP feedback and
+   citationless ratings), `main.py` (wires the resolver). Fixture docs now carry
+   `process:`/`department:` front-matter. Tests: `test_front_matter.py`,
+   `test_attribution.py`, plus additions to `test_retrieval.py`,
+   `test_orchestrator.py`, `test_repositories.py`.
+   **Gap:** only `LocalMarkdownSource` parses front-matter — `GoogleDriveSource`
+   does not yet, so real Drive docs resolve `process=None` and lean on the
+   embedding fallback until the shared-drive migration lands and the Drive
+   source adopts the same `parse_front_matter` step (a small follow-up).
 3. **Surface** — analytics endpoints + admin dashboard + `require_admin` +
    admin seeding + tenant scoping.
 4. **Discover (later)** — embedding clustering (HDBSCAN/KMeans) over feedback

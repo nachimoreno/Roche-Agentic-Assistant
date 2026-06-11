@@ -1,3 +1,8 @@
+---
+process: incident-reporting
+department: it
+---
+
 # Incident Reporting
 
 Incidents are tracked in ServiceNow. An incident is the right channel

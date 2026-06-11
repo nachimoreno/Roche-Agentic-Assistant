@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from sqlalchemy import Engine
 
 from agent import RAGAgent
+from attribution import AttributionResolver
 from conversation_layer import ConversationLayer
 from db import create_all, make_engine, new_id
 from document_source import CompositeSource, DocumentSource, LocalMarkdownSource
@@ -133,12 +134,14 @@ def build_assistant(settings: Settings, engine: Optional[Engine] = None) -> Assi
     agent = RAGAgent(document_store=docs, llm=llm, top_k=settings.top_k)
     session_repo = SessionRepository(engine)
     feedback_repo = FeedbackRepository(engine)
+    attribution = AttributionResolver(docs)
 
     return Assistant(
         conversation_layer=cl,
         rag_agent=agent,
         session_repo=session_repo,
         feedback_repo=feedback_repo,
+        attribution=attribution,
     )
 
 

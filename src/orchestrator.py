@@ -29,6 +29,7 @@ from agent import (
     TextDelta,
     Turn as AgentTurn,
 )
+from attribution import AttributionResolver
 from conversation_layer import AnalysisResult, ConversationLayer
 from db import FeedbackEntry
 from logging_setup import new_correlation_id
@@ -115,13 +116,42 @@ class Assistant:
         rag_agent: RAGAgent,
         session_repo: SessionRepository,
         feedback_repo: FeedbackRepository,
+        attribution: Optional[AttributionResolver] = None,
         history_turns: int = 10,
     ) -> None:
         self._cl = conversation_layer
         self._agent = rag_agent
         self._sessions = session_repo
         self._feedback = feedback_repo
+        # Resolves which doc/process a piece of feedback concerns. Optional so
+        # the orchestrator still works (attribution simply skipped) if unwired.
+        self._attribution = attribution
         self._history_turns = history_turns
+
+    # ------------------------------------------------------------------
+    # Attribution helpers
+    # ------------------------------------------------------------------
+
+    def _cited_tuples(self, citations: list[Citation]):
+        """(source, section, process, department) for each citation."""
+        out = []
+        for c in citations:
+            process = department = None
+            if self._attribution is not None:
+                process, department = self._attribution.doc_meta(c.source)
+            out.append((c.source, c.section, process, department))
+        return out
+
+    def _attribute_text_feedback(
+        self, feedback_id: UUID, text: str, tenant_id: Optional[UUID]
+    ) -> None:
+        """Attribute volunteered (no-citation) feedback via the nearest doc."""
+        if self._attribution is None:
+            return
+        result = self._attribution.resolve_from_text(text)
+        self._feedback.replace_attributions(
+            feedback_id, result.method, result.rows, tenant_id=tenant_id
+        )
 
     def handle(
         self,
@@ -151,7 +181,7 @@ class Assistant:
         self._sessions.set_title_if_unset(session_id, _titleize(message))
 
         if analysis.type == "feedback":
-            self._feedback.add(
+            fb = self._feedback.add(
                 FeedbackEntry(
                     session_id=session_id,
                     tenant_id=tenant_id,
@@ -160,6 +190,7 @@ class Assistant:
                     message=message,
                 )
             )
+            self._attribute_text_feedback(fb.id, message, tenant_id)
             ack = _ack_for(analysis.language)
             ack_turn = self._sessions.append_turn(
                 session_id,
@@ -195,7 +226,7 @@ class Assistant:
         )
         self._sessions.add_citations(
             assistant_turn.id,
-            [(c.source, c.section) for c in answer.citations],
+            self._cited_tuples(answer.citations),
             tenant_id=tenant_id,
         )
 
@@ -241,7 +272,7 @@ class Assistant:
         yield StreamMeta(analysis=analysis)
 
         if analysis.type == "feedback":
-            self._feedback.add(
+            fb = self._feedback.add(
                 FeedbackEntry(
                     session_id=session_id,
                     tenant_id=tenant_id,
@@ -250,6 +281,7 @@ class Assistant:
                     message=message,
                 )
             )
+            self._attribute_text_feedback(fb.id, message, tenant_id)
             ack = _ack_for(analysis.language)
             yield StreamToken(text=ack)
             ack_turn = self._sessions.append_turn(
@@ -302,7 +334,7 @@ class Assistant:
         )
         self._sessions.add_citations(
             assistant_turn.id,
-            [(c.source, c.section) for c in citations],
+            self._cited_tuples(citations),
             tenant_id=tenant_id,
         )
         yield StreamDone(
@@ -346,7 +378,7 @@ class Assistant:
                     "feedback.rating.classify_failed", extra={"turn_id": str(turn_id)}
                 )
 
-        return self._feedback.upsert_rating(
+        entry = self._feedback.upsert_rating(
             turn_id=turn_id,
             session_id=session_id,
             rating=rating,
@@ -355,3 +387,21 @@ class Assistant:
             language=language,
             tenant_id=tenant_id,
         )
+
+        # Attribute the rating to the doc(s)/process it concerns. Prefer the
+        # deterministic citation join; fall back to embedding the comment (or
+        # the answer itself) when the rated turn has no citations.
+        if self._attribution is not None:
+            cits = self._sessions.citations_for_turn(turn_id)
+            if cits:
+                result = self._attribution.resolve_from_citations(
+                    [(c.source, c.section, c.process, c.department) for c in cits]
+                )
+            else:
+                result = self._attribution.resolve_from_text(comment or turn.content)
+            self._feedback.replace_attributions(
+                entry.id, result.method, result.rows, tenant_id=tenant_id
+            )
+            entry.attribution_method = result.method   # reflect on the returned object
+
+        return entry

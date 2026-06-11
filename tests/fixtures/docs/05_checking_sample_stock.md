@@ -1,3 +1,8 @@
+---
+process: sample-stock
+department: lab-operations
+---
+
 # Checking Sample Stock
 
 Sample inventory is managed in the Sample Stock application. This guide

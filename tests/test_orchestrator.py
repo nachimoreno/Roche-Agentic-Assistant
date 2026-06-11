@@ -17,6 +17,7 @@ from typing import Any, Sequence
 import pytest
 
 from agent import RAGAgent
+from attribution import AttributionResolver
 from conversation_layer import ConversationLayer
 from db import create_all, make_engine, new_id
 from document_source import LocalMarkdownSource
@@ -136,6 +137,7 @@ def fake_assistant(engine, doc_store):
         rag_agent=agent,
         session_repo=sessions,
         feedback_repo=feedback,
+        attribution=AttributionResolver(doc_store),
     )
     return assistant, sessions, feedback
 
@@ -171,6 +173,46 @@ def test_question_response_exposes_turn_id_and_persists_citations(engine, fake_a
     assert len(cites) >= 1
     assert cites[0].source == "06_cleaning_lab_devices.md"
     assert cites[0].rank == 0
+
+
+def test_citations_resolve_process_from_front_matter(fake_assistant):
+    # The fixture 06_cleaning_lab_devices.md carries front-matter
+    # process: equipment-cleaning / department: lab-operations.
+    assistant, sessions, _ = fake_assistant
+    sid = new_id()
+    resp = assistant.handle(sid, "How do I clean the centrifuge?")
+    cits = sessions.citations_for_turn(resp.turn_id)
+    assert cits and cits[0].source == "06_cleaning_lab_devices.md"
+    assert cits[0].process == "equipment-cleaning"
+    assert cits[0].department == "lab-operations"
+
+
+def test_record_rating_attributes_via_citation_split(fake_assistant):
+    assistant, _, feedback_repo = fake_assistant
+    sid = new_id()
+    resp = assistant.handle(sid, "How do I clean the centrifuge?")
+
+    entry = assistant.record_rating(session_id=sid, turn_id=resp.turn_id, rating="down")
+    assert entry.attribution_method == "citation"
+
+    rows = feedback_repo.attributions_for(entry.id)
+    assert rows, "citation attribution should write at least one row"
+    assert abs(sum(r.weight for r in rows) - 1.0) < 1e-9
+    assert {r.process for r in rows} == {"equipment-cleaning"}
+    assert all(r.method == "citation" for r in rows)
+
+
+def test_nlp_feedback_attributed_via_embedding(fake_assistant):
+    assistant, _, feedback_repo = fake_assistant
+    sid = new_id()
+    assistant.handle(sid, "This onboarding doc is really confusing.")
+
+    nlp = [r for r in feedback_repo.list() if r.source == "nlp"]
+    assert len(nlp) == 1
+    assert nlp[0].attribution_method == "embedding"
+    rows = feedback_repo.attributions_for(nlp[0].id)
+    assert len(rows) == 1 and rows[0].method == "embedding"
+    assert rows[0].weight == 1.0
 
 
 def test_record_rating_writes_explicit_feedback_with_classified_comment(fake_assistant):
@@ -361,6 +403,7 @@ def live_assistant(engine, doc_store):
         rag_agent=agent,
         session_repo=sessions,
         feedback_repo=feedback,
+        attribution=AttributionResolver(doc_store),
     ), sessions, feedback
 
 

@@ -1,3 +1,8 @@
+---
+process: onboarding
+department: it
+---
+
 # Onboarding and Access Requests
 
 This document describes how a new scientist gets initial access to the
