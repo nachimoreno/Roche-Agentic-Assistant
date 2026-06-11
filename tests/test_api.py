@@ -298,10 +298,11 @@ class _StatusError(Exception):
 class FakeStreamingAssistant:
     """Yields canned stream events; or raises `error` mid-stream after meta."""
 
-    def __init__(self, tokens, citations, *, error: Exception | None = None):
+    def __init__(self, tokens, citations, *, error: Exception | None = None, turn_id=None):
         self._tokens = tokens
         self._citations = citations
         self._error = error
+        self._turn_id = turn_id
         self.calls: list[tuple] = []
 
     def handle_stream(self, session_id, message, **kwargs):
@@ -313,7 +314,11 @@ class FakeStreamingAssistant:
             raise self._error
         for t in self._tokens:
             yield StreamToken(text=t)
-        yield StreamDone(text="".join(self._tokens), citations=self._citations)
+        yield StreamDone(
+            text="".join(self._tokens),
+            citations=self._citations,
+            turn_id=self._turn_id,
+        )
 
 
 def _parse_sse(body: str) -> list[tuple[str, dict]]:
@@ -401,3 +406,112 @@ def test_error_category_defaults_to_internal():
     cat, detail = api._error_category(RuntimeError("anything"))
     assert cat == "internal"
     assert detail == "Internal error handling the request."
+
+
+# ---------------------------------------------------------------------------
+# turn_id surfaced to the client (needed so the UI can rate an answer)
+# ---------------------------------------------------------------------------
+
+def test_chat_surfaces_turn_id(client):
+    tid = UUID(int=42)
+    _inject(FakeAssistant(response=Response(
+        text="ok",
+        analysis=AnalysisResult(language="english", type="question", emotion=None),
+        citations=[],
+        turn_id=tid,
+    )))
+    body = client.post(
+        f"/api/sessions/{UUID(int=1)}/chat", json={"message": "hi"}
+    ).json()
+    assert body["turn_id"] == str(tid)
+
+
+def test_stream_done_includes_turn_id(client):
+    tid = UUID(int=55)
+    _inject(FakeStreamingAssistant(["x"], [], turn_id=tid))
+    resp = client.post(f"/api/sessions/{UUID(int=10)}/chat/stream", json={"message": "how?"})
+    done = _parse_sse(resp.text)[-1][1]
+    assert done["turn_id"] == str(tid)
+
+
+def test_messages_include_turn_id(client):
+    sid = _session_with_pending_user_turn(client)
+    client.post(f"/api/sessions/{sid}/messages", json={"content": "answer", "language": "english"})
+    rows = client.get(f"/api/sessions/{sid}/messages").json()
+    assert rows and all(r.get("id") for r in rows)
+    UUID(rows[0]["id"])   # each id is a real UUID
+
+
+# ---------------------------------------------------------------------------
+# Explicit ratings — POST /sessions/{sid}/turns/{tid}/feedback
+# ---------------------------------------------------------------------------
+
+class FakeRatingAssistant:
+    """Records record_rating calls; optionally raises."""
+
+    def __init__(self, raises: Exception | None = None):
+        self._raises = raises
+        self.calls: list[dict] = []
+
+    def record_rating(self, **kwargs):
+        self.calls.append(kwargs)
+        if self._raises is not None:
+            raise self._raises
+        return object()
+
+
+def _owned_session(client) -> str:
+    """A session owned by the fixture's authenticated user."""
+    return client.post("/api/sessions").json()["id"]
+
+
+def test_rate_turn_records_rating(client):
+    fake = FakeRatingAssistant()
+    _inject(fake)
+    sid = _owned_session(client)
+    tid = str(UUID(int=7))
+
+    resp = client.post(
+        f"/api/sessions/{sid}/turns/{tid}/feedback",
+        json={"rating": "down", "comment": "wrong section"},
+    )
+    assert resp.status_code == 201
+    assert len(fake.calls) == 1
+    assert fake.calls[0]["rating"] == "down"
+    assert fake.calls[0]["comment"] == "wrong section"
+
+
+def test_rate_turn_rejects_bad_rating(client):
+    _inject(FakeRatingAssistant())
+    sid = _owned_session(client)
+    resp = client.post(
+        f"/api/sessions/{sid}/turns/{UUID(int=7)}/feedback", json={"rating": "sideways"}
+    )
+    assert resp.status_code == 422
+
+
+def test_rate_turn_rejects_malformed_turn_id(client):
+    _inject(FakeRatingAssistant())
+    sid = _owned_session(client)
+    resp = client.post(
+        f"/api/sessions/{sid}/turns/not-a-uuid/feedback", json={"rating": "up"}
+    )
+    assert resp.status_code == 422
+
+
+def test_rate_turn_404_for_unowned_session(client):
+    _inject(FakeRatingAssistant())
+    resp = client.post(
+        f"/api/sessions/{UUID(int=99)}/turns/{UUID(int=7)}/feedback", json={"rating": "up"}
+    )
+    assert resp.status_code == 404
+
+
+def test_rate_turn_404_when_assistant_rejects_turn(client):
+    # Assistant raises ValueError when the turn isn't a rateable assistant turn.
+    _inject(FakeRatingAssistant(raises=ValueError("no such assistant turn")))
+    sid = _owned_session(client)
+    resp = client.post(
+        f"/api/sessions/{sid}/turns/{UUID(int=7)}/feedback", json={"rating": "up"}
+    )
+    assert resp.status_code == 404

@@ -13,8 +13,10 @@ from uuid import UUID
 
 import pytest
 
-from db import FeedbackEntry, create_all, make_engine, new_id, utcnow
-from repositories import FeedbackRepository, SessionRepository
+from sqlmodel import Session as DbSession, select
+
+from db import FeedbackEntry, TurnCitation, create_all, make_engine, new_id, utcnow
+from repositories import FeedbackRepository, SessionRepository, UserRepository
 
 
 # ---------------------------------------------------------------------------
@@ -184,3 +186,69 @@ def test_soft_delete_hides_by_default_but_visible_with_flag(sessions, feedback):
     assert feedback.list() == []
     assert len(feedback.list(include_deleted=True)) == 1
     assert feedback.list(include_deleted=True)[0].deleted_at is not None
+
+
+# ---------------------------------------------------------------------------
+# Turns / citations / explicit ratings (feedback pipeline — Phase 1)
+# ---------------------------------------------------------------------------
+
+def test_get_turn_returns_turn(sessions):
+    sid = new_id()
+    sessions.get_or_create(sid)
+    t = sessions.append_turn(sid, "assistant", "hi", language="english")
+    got = sessions.get_turn(t.id)
+    assert got is not None and got.id == t.id
+    assert sessions.get_turn(new_id()) is None      # unknown id
+
+
+def test_add_citations_persists_ranked_rows(engine, sessions):
+    sid = new_id()
+    sessions.get_or_create(sid)
+    t = sessions.append_turn(sid, "assistant", "answer", language="english")
+    sessions.add_citations(t.id, [("a.md", "Intro"), ("b.md", None)])
+
+    with DbSession(engine) as db:
+        rows = db.exec(
+            select(TurnCitation)
+            .where(TurnCitation.turn_id == t.id)
+            .order_by(TurnCitation.rank)
+        ).all()
+    assert [r.source for r in rows] == ["a.md", "b.md"]
+    assert [r.rank for r in rows] == [0, 1]
+    # Process/department are resolved later (Phase 2); None at capture time.
+    assert rows[0].process is None
+
+
+def test_add_citations_noop_on_empty(engine, sessions):
+    sid = new_id()
+    sessions.get_or_create(sid)
+    t = sessions.append_turn(sid, "assistant", "answer", language="english")
+    sessions.add_citations(t.id, [])
+    with DbSession(engine) as db:
+        rows = db.exec(select(TurnCitation).where(TurnCitation.turn_id == t.id)).all()
+    assert rows == []
+
+
+def test_upsert_rating_is_idempotent_per_turn(sessions, feedback):
+    sid = new_id()
+    sessions.get_or_create(sid)
+    t = sessions.append_turn(sid, "assistant", "answer", language="english")
+
+    feedback.upsert_rating(turn_id=t.id, session_id=sid, rating="up", language="english")
+    feedback.upsert_rating(
+        turn_id=t.id, session_id=sid, rating="down", comment="bad", language="english"
+    )
+
+    explicit = [r for r in feedback.list() if r.source == "explicit"]
+    assert len(explicit) == 1            # re-rating updated, did not stack
+    assert explicit[0].rating == "down"
+    assert explicit[0].comment == "bad"
+
+
+def test_set_role_promotes_user(engine):
+    users = UserRepository(engine)
+    u = users.create(email="admin@roche.com", password_hash="x")
+    assert (u.role or "user") == "user"
+    updated = users.set_role(u.id, "admin")
+    assert updated is not None and updated.role == "admin"
+    assert users.get(u.id).role == "admin"

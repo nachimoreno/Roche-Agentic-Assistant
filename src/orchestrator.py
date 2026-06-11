@@ -47,6 +47,7 @@ class Response:
     text: str
     analysis: AnalysisResult
     citations: list[Citation]
+    turn_id: Optional[UUID] = None      # the assistant turn, for rating
 
 
 # ---------------------------------------------------------------------------
@@ -73,6 +74,7 @@ class StreamDone:
 
     text: str
     citations: list[Citation]
+    turn_id: Optional[UUID] = None      # the assistant turn, for rating
 
 
 StreamEvent = Union[StreamMeta, StreamToken, StreamDone]
@@ -159,14 +161,16 @@ class Assistant:
                 )
             )
             ack = _ack_for(analysis.language)
-            self._sessions.append_turn(
+            ack_turn = self._sessions.append_turn(
                 session_id,
                 role="assistant",
                 content=ack,
                 language=analysis.language,
                 tenant_id=tenant_id,
             )
-            return Response(text=ack, analysis=analysis, citations=[])
+            return Response(
+                text=ack, analysis=analysis, citations=[], turn_id=ack_turn.id
+            )
 
         # Question path — load recent history (excluding the user turn we
         # just wrote, which is the same as `message`) and run RAG.
@@ -182,11 +186,16 @@ class Assistant:
             history=history,
         )
 
-        self._sessions.append_turn(
+        assistant_turn = self._sessions.append_turn(
             session_id,
             role="assistant",
             content=answer.text,
             language=analysis.language,
+            tenant_id=tenant_id,
+        )
+        self._sessions.add_citations(
+            assistant_turn.id,
+            [(c.source, c.section) for c in answer.citations],
             tenant_id=tenant_id,
         )
 
@@ -194,6 +203,7 @@ class Assistant:
             text=answer.text,
             analysis=analysis,
             citations=answer.citations,
+            turn_id=assistant_turn.id,
         )
 
     def handle_stream(
@@ -242,14 +252,14 @@ class Assistant:
             )
             ack = _ack_for(analysis.language)
             yield StreamToken(text=ack)
-            self._sessions.append_turn(
+            ack_turn = self._sessions.append_turn(
                 session_id,
                 role="assistant",
                 content=ack,
                 language=analysis.language,
                 tenant_id=tenant_id,
             )
-            yield StreamDone(text=ack, citations=[])
+            yield StreamDone(text=ack, citations=[], turn_id=ack_turn.id)
             return
 
         history_rows = self._sessions.recent_turns(session_id, n=self._history_turns)
@@ -283,11 +293,65 @@ class Assistant:
             )
             raise
 
-        self._sessions.append_turn(
+        assistant_turn = self._sessions.append_turn(
             session_id,
             role="assistant",
             content=full_text,
             language=analysis.language,
             tenant_id=tenant_id,
         )
-        yield StreamDone(text=full_text, citations=citations)
+        self._sessions.add_citations(
+            assistant_turn.id,
+            [(c.source, c.section) for c in citations],
+            tenant_id=tenant_id,
+        )
+        yield StreamDone(
+            text=full_text, citations=citations, turn_id=assistant_turn.id
+        )
+
+    def record_rating(
+        self,
+        *,
+        session_id: UUID,
+        turn_id: UUID,
+        rating: str,
+        comment: Optional[str] = None,
+        tenant_id: Optional[UUID] = None,
+    ) -> FeedbackEntry:
+        """Record an explicit thumb up/down on an assistant answer.
+
+        Validates the turn is an assistant turn in `session_id` (raises
+        ValueError otherwise — the API maps that to 404). When a comment is
+        present it is classified for emotion so explicit down-votes still carry
+        sentiment; a classification hiccup degrades to "neutral" rather than
+        dropping the rating. The write is idempotent per turn (see
+        `FeedbackRepository.upsert_rating`).
+        """
+        if rating not in ("up", "down"):
+            raise ValueError(f"rating must be 'up' or 'down', got {rating!r}")
+
+        turn = self._sessions.get_turn(turn_id)
+        if turn is None or turn.session_id != session_id or turn.role != "assistant":
+            raise ValueError("no assistant turn to rate in this session")
+
+        comment = (comment or "").strip() or None
+        language = turn.language or "english"
+        emotion = "neutral"
+        if comment:
+            try:
+                analysis = self._cl.analyze(comment)
+                emotion = analysis.emotion or "neutral"
+            except Exception:
+                logger.warning(
+                    "feedback.rating.classify_failed", extra={"turn_id": str(turn_id)}
+                )
+
+        return self._feedback.upsert_rating(
+            turn_id=turn_id,
+            session_id=session_id,
+            rating=rating,
+            comment=comment,
+            emotion=emotion,
+            language=language,
+            tenant_id=tenant_id,
+        )

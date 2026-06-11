@@ -153,6 +153,82 @@ def test_question_path_persists_turns_and_returns_citations(fake_assistant):
     assert [t.role for t in turns] == ["user", "assistant"]
 
 
+def test_question_response_exposes_turn_id_and_persists_citations(engine, fake_assistant):
+    from sqlmodel import Session as DbSession, select
+    from db import TurnCitation
+
+    assistant, _, _ = fake_assistant
+    sid = new_id()
+    resp = assistant.handle(sid, "How do I clean the centrifuge?")
+
+    # The assistant turn id is surfaced so the UI can rate the answer.
+    assert resp.turn_id is not None
+    # Its citations are persisted (the link feedback later uses for attribution).
+    with DbSession(engine) as db:
+        cites = db.exec(
+            select(TurnCitation).where(TurnCitation.turn_id == resp.turn_id)
+        ).all()
+    assert len(cites) >= 1
+    assert cites[0].source == "06_cleaning_lab_devices.md"
+    assert cites[0].rank == 0
+
+
+def test_record_rating_writes_explicit_feedback_with_classified_comment(fake_assistant):
+    assistant, _, feedback_repo = fake_assistant
+    sid = new_id()
+    resp = assistant.handle(sid, "How do I clean the centrifuge?")
+
+    entry = assistant.record_rating(
+        session_id=sid, turn_id=resp.turn_id, rating="down", comment="this is confusing"
+    )
+    assert entry.rating == "down"
+    assert entry.source == "explicit"
+    assert entry.comment == "this is confusing"
+    # The comment is classified for sentiment (fake maps "confusing" -> confused).
+    assert entry.emotion == "confused"
+    assert any(r.source == "explicit" for r in feedback_repo.list())
+
+
+def test_record_rating_without_comment_defaults_emotion_neutral(fake_assistant):
+    assistant, _, _ = fake_assistant
+    sid = new_id()
+    resp = assistant.handle(sid, "How do I clean the centrifuge?")
+    entry = assistant.record_rating(session_id=sid, turn_id=resp.turn_id, rating="up")
+    assert entry.rating == "up"
+    assert entry.emotion == "neutral"
+    assert entry.comment is None
+
+
+def test_record_rating_is_idempotent_per_turn(fake_assistant):
+    assistant, _, feedback_repo = fake_assistant
+    sid = new_id()
+    resp = assistant.handle(sid, "How do I clean the centrifuge?")
+    assistant.record_rating(session_id=sid, turn_id=resp.turn_id, rating="up")
+    assistant.record_rating(session_id=sid, turn_id=resp.turn_id, rating="down")
+    explicit = [r for r in feedback_repo.list() if r.source == "explicit"]
+    assert len(explicit) == 1 and explicit[0].rating == "down"
+
+
+def test_record_rating_rejects_unknown_or_user_turn(fake_assistant):
+    assistant, sessions, _ = fake_assistant
+    sid = new_id()
+    sessions.get_or_create(sid)
+    user_turn = sessions.append_turn(sid, "user", "hi", language="english")
+
+    with pytest.raises(ValueError):
+        assistant.record_rating(session_id=sid, turn_id=new_id(), rating="up")   # unknown
+    with pytest.raises(ValueError):
+        assistant.record_rating(session_id=sid, turn_id=user_turn.id, rating="up")  # not assistant
+
+
+def test_record_rating_rejects_bad_value(fake_assistant):
+    assistant, _, _ = fake_assistant
+    sid = new_id()
+    resp = assistant.handle(sid, "How do I clean the centrifuge?")
+    with pytest.raises(ValueError):
+        assistant.record_rating(session_id=sid, turn_id=resp.turn_id, rating="meh")
+
+
 def test_feedback_path_writes_feedback_row(fake_assistant):
     assistant, _, feedback_repo = fake_assistant
     sid = new_id()

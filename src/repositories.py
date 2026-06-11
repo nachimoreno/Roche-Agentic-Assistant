@@ -21,7 +21,7 @@ from sqlalchemy import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session as DbSession, select
 
-from db import FeedbackEntry, Session, Turn, User, utcnow
+from db import FeedbackEntry, Session, Turn, TurnCitation, User, utcnow
 
 
 logger = logging.getLogger(__name__)
@@ -79,6 +79,19 @@ class UserRepository:
             )
             return db.exec(stmt).first()
 
+    def set_role(self, id: UUID, role: str) -> Optional[User]:
+        """Set a user's role (e.g. promote to "admin"). Used by admin seeding."""
+        with DbSession(self._engine) as db:
+            user = db.get(User, id)
+            if user is None:
+                return None
+            user.role = role
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+        logger.info("user.role.set", extra={"user_id": str(id), "role": role})
+        return user
+
 
 # ---------------------------------------------------------------------------
 # FeedbackRepository
@@ -100,6 +113,63 @@ class FeedbackRepository:
                 "session_id": str(entry.session_id),
                 "language": entry.language,
                 "emotion": entry.emotion,
+            },
+        )
+        return entry
+
+    def upsert_rating(
+        self,
+        *,
+        turn_id: UUID,
+        session_id: UUID,
+        rating: str,
+        comment: Optional[str] = None,
+        emotion: Optional[str] = None,
+        language: str,
+        tenant_id: Optional[UUID] = None,
+    ) -> FeedbackEntry:
+        """Record an explicit thumb on an assistant turn, idempotently.
+
+        One explicit rating per `turn_id` (a turn belongs to one session, owned
+        by one user, so this is effectively one rating per user). Re-rating the
+        same turn updates the existing row rather than stacking duplicates that
+        would inflate the negative rate.
+        """
+        with DbSession(self._engine) as db:
+            stmt = select(FeedbackEntry).where(
+                FeedbackEntry.turn_id == turn_id,
+                FeedbackEntry.source == "explicit",
+                FeedbackEntry.deleted_at.is_(None),  # type: ignore[union-attr]
+            )
+            entry = db.exec(stmt).first()
+            if entry is None:
+                entry = FeedbackEntry(
+                    session_id=session_id,
+                    turn_id=turn_id,
+                    tenant_id=tenant_id,
+                    language=language,
+                    emotion=emotion,
+                    message=comment or "",
+                    comment=comment,
+                    rating=rating,
+                    source="explicit",
+                )
+            else:
+                entry.rating = rating
+                entry.comment = comment
+                entry.message = comment or ""
+                entry.emotion = emotion
+                entry.language = language
+            db.add(entry)
+            db.commit()
+            db.refresh(entry)
+        logger.info(
+            "feedback.rating",
+            extra={
+                "id": str(entry.id),
+                "turn_id": str(turn_id),
+                "rating": rating,
+                "has_comment": bool(comment),
             },
         )
         return entry
@@ -199,6 +269,45 @@ class SessionRepository:
                 .order_by(Session.created_at.desc())  # type: ignore[union-attr]
             )
             return list(db.exec(stmt).all())
+
+    def get_turn(self, turn_id: UUID, *, include_deleted: bool = False) -> Optional[Turn]:
+        """Fetch a single turn by id (for rating validation)."""
+        with DbSession(self._engine) as db:
+            turn = db.get(Turn, turn_id)
+            if turn is None:
+                return None
+            if turn.deleted_at is not None and not include_deleted:
+                return None
+            return turn
+
+    def add_citations(
+        self,
+        turn_id: UUID,
+        citations: list[tuple[str, Optional[str]]],
+        *,
+        tenant_id: Optional[UUID] = None,
+    ) -> None:
+        """Persist the documents an assistant turn cited.
+
+        `citations` is an ordered list of `(source, section)` tuples — kept as
+        plain tuples so this layer stays decoupled from the agent's `Citation`.
+        `rank` follows the order (0 = top-ranked). `process`/`department` are
+        resolved in Phase 2; left None here.
+        """
+        if not citations:
+            return
+        with DbSession(self._engine) as db:
+            for rank, (source, section) in enumerate(citations):
+                db.add(
+                    TurnCitation(
+                        turn_id=turn_id,
+                        tenant_id=tenant_id,
+                        source=source,
+                        section=section,
+                        rank=rank,
+                    )
+                )
+            db.commit()
 
     def messages(self, session_id: UUID, *, include_deleted: bool = False) -> list[Turn]:
         """All turns for a session, oldest first."""

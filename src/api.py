@@ -156,6 +156,7 @@ class ChatResponse(BaseModel):
     type: str
     emotion: Optional[str] = None
     citations: list[CitationOut]
+    turn_id: Optional[str] = None      # the assistant turn, for rating
 
 
 class SessionItemOut(BaseModel):
@@ -173,6 +174,7 @@ class RenameSessionRequest(BaseModel):
 
 
 class MessageOut(BaseModel):
+    id: str                            # the turn id, so the UI can rate it
     role: str
     content: str
     language: Optional[str] = None
@@ -182,6 +184,11 @@ class MessageOut(BaseModel):
 class AppendPartialRequest(BaseModel):
     content: str
     language: Optional[str] = None
+
+
+class RateRequest(BaseModel):
+    rating: str                        # "up" | "down"
+    comment: Optional[str] = None
 
 
 class RegisterRequest(BaseModel):
@@ -317,6 +324,7 @@ def get_messages(session_id: str, request: Request, user: User = Depends(get_cur
     _require_owned(request, sid, user)
     return [
         MessageOut(
+            id=str(t.id),
             role=t.role,
             content=t.content,
             language=t.language,
@@ -376,6 +384,7 @@ def append_partial_message(
             detail="no unanswered user turn to attach a partial answer to",
         )
     return MessageOut(
+        id=str(t.id),
         role=t.role,
         content=t.content,
         language=t.language,
@@ -437,6 +446,7 @@ def chat(
             CitationOut(source=c.source, section=c.section)
             for c in resp.citations
         ],
+        turn_id=str(resp.turn_id) if resp.turn_id else None,
     )
 
 
@@ -497,6 +507,7 @@ def chat_stream(
                             {"source": c.source, "section": c.section}
                             for c in ev.citations
                         ],
+                        "turn_id": str(ev.turn_id) if ev.turn_id else None,
                     })
         except Exception as exc:
             category, detail = _error_category(exc)
@@ -511,6 +522,47 @@ def chat_stream(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Feedback (explicit ratings)
+# ---------------------------------------------------------------------------
+
+@app.post("/api/sessions/{session_id}/turns/{turn_id}/feedback", status_code=201)
+def rate_turn(
+    session_id: str,
+    turn_id: str,
+    body: RateRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    """Record a thumb up/down (+ optional comment) on an assistant answer.
+
+    Ownership is checked here; the assistant validates that the turn is an
+    assistant turn in the session. Idempotent per turn (re-rating updates).
+    """
+    sid = _parse_sid(session_id)
+    try:
+        tid = UUID(turn_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid turn_id format")
+    if body.rating not in ("up", "down"):
+        raise HTTPException(status_code=422, detail="rating must be 'up' or 'down'")
+    _require_owned(request, sid, user)
+
+    assistant: Assistant = request.app.state.assistant
+    try:
+        assistant.record_rating(
+            session_id=sid, turn_id=tid, rating=body.rating, comment=body.comment
+        )
+    except ValueError:
+        # Turn doesn't exist / isn't an assistant turn in this session.
+        raise HTTPException(status_code=404, detail="Answer not found")
+    except Exception:
+        logger.exception("api.rate.failed", extra={"session_id": str(sid)})
+        raise HTTPException(status_code=500, detail="Internal error handling the request.")
+
+    return {"ok": True}
 
 
 if __name__ == "__main__":

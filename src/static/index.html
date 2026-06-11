@@ -248,6 +248,13 @@ textarea,input{font-family:var(--font)}
 .act-time{font-size:11px;color:transparent;transition:color .18s;margin-left:auto}
 .msg-row.ai:hover .act-time{color:var(--t4)}
 
+/* Down-vote comment box */
+.cmt-box{display:flex;gap:7px;margin-top:8px;padding-left:2px;max-width:520px;animation:msgIn .18s}
+.cmt-input{flex:1;padding:7px 11px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);font-size:12.5px;color:var(--t2)}
+.cmt-input:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 2px var(--amber-l)}
+.cmt-send{padding:7px 14px;background:var(--amber);border:none;border-radius:var(--r);font-size:12px;font-weight:600;color:#fff;cursor:pointer}
+.cmt-send:hover{filter:brightness(.95)}
+
 /* Follow-up chips */
 .fu-chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
 .fu-chip{display:flex;align-items:center;gap:5px;padding:6px 13px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-f);font-size:12.5px;font-weight:500;color:var(--t2);cursor:pointer;transition:all var(--tx);box-shadow:var(--s-sm)}
@@ -983,6 +990,7 @@ async function loadMessages(id) {
       type: 'question',
       language: t.language,
       citations: [],
+      turnId: t.id,
     }));
   } catch { return []; }
 }
@@ -1293,6 +1301,7 @@ async function sendMessage(text) {
         } else if (ev.event === 'done') {
           if (aiMsg) {
             aiMsg.citations = ev.data.citations || [];
+            aiMsg.turnId = ev.data.turn_id || null;
             delete aiMsg.live;
           }
           persist();
@@ -1318,7 +1327,9 @@ async function sendMessage(text) {
         fetch(`/api/sessions/${sessionId}/messages`, {
           method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({ content: aiMsg.content, language: aiMsg.language }),
-        }).catch(() => {});
+        }).then(r => r.ok ? r.json() : null)
+          .then(row => { if (row && row.id) { aiMsg.turnId = row.id; persist(); } })
+          .catch(() => {});
       }
     } else if (aborted) {
       // User pressed Stop before any output arrived — no error card needed.
@@ -1425,14 +1436,63 @@ function buildActions(el, m, row) {
 }
 
 function feedback(ts, dir, btn) {
+  const m = messages.find(x => x.ts === ts);
+  if (!m || !m.turnId) {
+    // No server turn id yet (e.g. mid-stream, or an error/welcome card).
+    toast('Still processing — try again in a moment', 'amber');
+    return;
+  }
   const upBtn = document.getElementById('fbu' + ts);
   const dnBtn = document.getElementById('fbd' + ts);
   const wasActive = btn.classList.contains(dir === 'up' ? 'up-active' : 'dn-active');
   upBtn?.classList.remove('up-active'); dnBtn?.classList.remove('dn-active');
-  if (!wasActive) {
-    btn.classList.add(dir === 'up' ? 'up-active' : 'dn-active');
-    toast(dir === 'up' ? '👍 Feedback recorded — thank you!' : '👎 Feedback noted — we\'ll improve', dir === 'up' ? 'green' : 'amber');
+  document.getElementById('cmt' + ts)?.remove();
+  if (wasActive) return;   // toggled off — no un-rate endpoint; just clear UI
+
+  btn.classList.add(dir === 'up' ? 'up-active' : 'dn-active');
+  submitRating(m, dir, null);
+  if (dir === 'up') {
+    toast('👍 Feedback recorded — thank you!', 'green');
+  } else {
+    toast('👎 Feedback noted — we\'ll improve', 'amber');
+    showCommentBox(ts, m);   // optional free-text note on a down-vote
   }
+}
+
+async function submitRating(m, dir, comment) {
+  if (!m || !m.turnId) return;
+  try {
+    await fetch(`/api/sessions/${sessionId}/turns/${m.turnId}/feedback`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rating: dir, comment: comment || null }),
+    });
+  } catch { /* feedback is best-effort; never block the UI */ }
+}
+
+function showCommentBox(ts, m) {
+  if (document.getElementById('cmt' + ts)) return;
+  const acts = document.getElementById('acts' + ts);
+  if (!acts) return;
+  const box = document.createElement('div');
+  box.id = 'cmt' + ts;
+  box.className = 'cmt-box';
+  box.innerHTML = `
+    <input class="cmt-input" id="cmtin${ts}" type="text" maxlength="500"
+           placeholder="Optional: what went wrong? (helps IT improve)"
+           aria-label="Feedback comment"
+           onkeydown="if(event.key==='Enter')sendComment(${ts})">
+    <button class="cmt-send" type="button" onclick="sendComment(${ts})">Send</button>`;
+  acts.insertAdjacentElement('afterend', box);
+  document.getElementById('cmtin' + ts)?.focus();
+}
+
+function sendComment(ts) {
+  const m = messages.find(x => x.ts === ts);
+  const inp = document.getElementById('cmtin' + ts);
+  const val = (inp?.value || '').trim();
+  if (m && val) submitRating(m, 'down', val);
+  document.getElementById('cmt' + ts)?.remove();
+  if (val) toast('Thanks — your note was sent to IT', 'amber');
 }
 
 function buildFU(el, m) {
