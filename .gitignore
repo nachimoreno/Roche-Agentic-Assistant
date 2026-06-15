@@ -6,6 +6,10 @@
 .env
 .misc/
 credentials/
+secrets/
+
+# Editor
+.vscode/
 
 # Python
 __pycache__/

@@ -15,8 +15,18 @@ from settings import Settings
 
 
 def _settings(**overrides) -> Settings:
-    # groq_api_key is the only required field; supply a dummy.
-    base = {"groq_api_key": "test-key"}
+    # Pin every field this suite asserts on. conftest's load_dotenv() pushes
+    # the developer's real .env into os.environ, so without explicit values
+    # here the tests would inherit live config (e.g. DOCUMENT_SOURCE) and fail.
+    # Init kwargs outrank env vars in pydantic-settings, so this is hermetic.
+    base = {
+        "groq_api_key": "test-key",
+        "document_source": "local",
+        "docs_path": "data/docs",
+        "drive_folder_id": None,
+        "google_service_account_json": None,
+        "google_oauth_credentials": None,
+    }
     base.update(overrides)
     return Settings(**base)
 
@@ -29,7 +39,8 @@ def test_defaults_to_local_markdown_source():
 def test_local_source_uses_configured_docs_path():
     src = build_source(_settings(document_source="local", docs_path="some/dir"))
     assert isinstance(src, LocalMarkdownSource)
-    assert str(src._path) == "some/dir"
+    # as_posix() so the assertion holds on Windows (backslash) too.
+    assert src._path.as_posix() == "some/dir"
 
 
 def test_google_drive_source_is_selected_and_configured():
