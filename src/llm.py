@@ -146,3 +146,35 @@ class GroqClient:
                 "Groq rejected the API key (401). Set a valid GROQ_API_KEY "
                 "in .env (one key, no trailing characters) and restart."
             ) from exc
+
+
+# Whisper model used for voice input. Multilingual + fast, so it handles the
+# assistant's supported languages (EN/DE/FR/IT/ES) and auto-detects which.
+_TRANSCRIBE_MODEL = "whisper-large-v3-turbo"
+
+
+def transcribe_audio(
+    api_key: str,
+    audio: bytes,
+    filename: str = "recording.webm",
+    *,
+    model: str = _TRANSCRIBE_MODEL,
+    language: str | None = None,
+) -> str:
+    """Transcribe recorded audio to text via Groq Whisper.
+
+    Server-side speech-to-text — used instead of the browser's Web Speech API,
+    which fails ("network" error) in Edge, corporate networks, and the packaged
+    desktop app because it depends on reaching a Google/Microsoft cloud service.
+
+    `language` is an optional ISO-639-1 hint (e.g. "es"); left None, Whisper
+    auto-detects the spoken language.
+    """
+    client = Groq(api_key=api_key)
+    result = client.audio.transcriptions.create(
+        file=(filename, audio),
+        model=model,
+        language=language,
+        response_format="json",
+    )
+    return (result.text or "").strip()

@@ -156,7 +156,12 @@ textarea,input{font-family:var(--font)}
 .sug-card:nth-child(5){animation-delay:.25s}.sug-card:nth-child(6){animation-delay:.30s}
 @keyframes cardIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .sug-card:hover{border-color:var(--blue);box-shadow:var(--s),0 0 0 3px var(--blue-mid);transform:translateY(-1px)}
-.sc-icon{font-size:18px;margin-bottom:2px}
+.sc-icon{
+  width:34px;height:34px;border-radius:10px;margin-bottom:4px;flex-shrink:0;
+  background:var(--blue-light);color:var(--blue);
+  display:inline-flex;align-items:center;justify-content:center;
+}
+.sc-icon svg{width:18px;height:18px}
 .sc-title{font-size:13px;font-weight:600;color:var(--t1)}
 .sc-desc{font-size:11.5px;color:var(--t4);line-height:1.4}
 
@@ -775,7 +780,8 @@ let pinned     = []; // array of {ts, preview}
 let busy       = false;
 let autoScroll = true;
 let searchMatches = [], searchIdx = 0;
-let pendingFile = null, voiceOn = false, recog = null;
+let pendingFile = null, voiceOn = false;
+let mediaRecorder = null, audioChunks = [], voiceStream = null;
 let histIdx = -1; // prompt history navigation index
 let streamCtrl = null; // AbortController for the in-flight stream (Stop button)
 
@@ -1075,15 +1081,31 @@ function closeDrawer() {
   document.getElementById('drawerScrim').classList.remove('show');
 }
 
+/* ─── ICONS ──────────────────────────────────────────────────── */
+const icn = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+const ICONS = {
+  microscope: icn('<path d="M6 18h8"/><path d="M3 22h18"/><path d="M14 22a7 7 0 1 0 0-14h-1"/><path d="M9 14h2"/><path d="M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z"/><path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3"/>'),
+  map:        icn('<path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15"/><path d="M9 3.236v15"/>'),
+  book:       icn('<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>'),
+  scale:      icn('<path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/>'),
+  atom:       icn('<circle cx="12" cy="12" r="1"/><path d="M20.2 20.2c2.04-2.03.02-7.36-4.5-11.9-4.54-4.52-9.87-6.54-11.9-4.5-2.04 2.03-.02 7.36 4.5 11.9 4.54 4.52 9.87 6.54 11.9 4.5Z"/><path d="M15.7 15.7c4.52-4.54 6.54-9.87 4.5-11.9-2.03-2.04-7.36-.02-11.9 4.5-4.52 4.54-6.54 9.87-4.5 11.9 2.03 2.04 7.36.02 11.9-4.5Z"/>'),
+  clipboard:  icn('<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/>'),
+  plus:       icn('<path d="M5 12h14"/><path d="M12 5v14"/>'),
+  download:   icn('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>'),
+  moon:       icn('<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>'),
+  search:     icn('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>'),
+  pin:        icn('<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>'),
+};
+
 /* ─── WELCOME ────────────────────────────────────────────────── */
 function renderWelcome() {
   const items = [
-    { icon:'🔬', title:'Analyze a clinical study',  desc:'Upload or describe a study for detailed analysis',  q:'Can you analyze the methodology and key findings of a Phase III oncology clinical trial?' },
-    { icon:'🗺️', title:'Treatment landscape',        desc:'Comprehensive overview of available therapies',     q:'What is the current treatment landscape for HER2-positive metastatic breast cancer?' },
-    { icon:'📚', title:'Literature review',           desc:'Summarize the latest publications on a topic',      q:'Summarize the latest publications on CAR-T cell therapy in hematologic malignancies.' },
-    { icon:'⚖️', title:'Compare therapies',           desc:'Efficacy and safety side-by-side',                  q:'Compare the efficacy and safety of PD-1 versus PD-L1 inhibitors in NSCLC.' },
-    { icon:'⚗️', title:'Mechanism of action',         desc:'Molecular and cellular mechanisms',                 q:'Explain the mechanism of action of bispecific T-cell engagers in oncology.' },
-    { icon:'📋', title:'Evidence summary',            desc:'Evidence-based clinical summary',                   q:'What clinical evidence supports the use of bevacizumab in glioblastoma?' },
+    { icon:ICONS.microscope, title:'Analyze a clinical study',  desc:'Upload or describe a study for detailed analysis',  q:'Can you analyze the methodology and key findings of a Phase III oncology clinical trial?' },
+    { icon:ICONS.map,        title:'Treatment landscape',        desc:'Comprehensive overview of available therapies',     q:'What is the current treatment landscape for HER2-positive metastatic breast cancer?' },
+    { icon:ICONS.book,       title:'Literature review',           desc:'Summarize the latest publications on a topic',      q:'Summarize the latest publications on CAR-T cell therapy in hematologic malignancies.' },
+    { icon:ICONS.scale,      title:'Compare therapies',           desc:'Efficacy and safety side-by-side',                  q:'Compare the efficacy and safety of PD-1 versus PD-L1 inhibitors in NSCLC.' },
+    { icon:ICONS.atom,       title:'Mechanism of action',         desc:'Molecular and cellular mechanisms',                 q:'Explain the mechanism of action of bispecific T-cell engagers in oncology.' },
+    { icon:ICONS.clipboard,  title:'Evidence summary',            desc:'Evidence-based clinical summary',                   q:'What clinical evidence supports the use of bevacizumab in glioblastoma?' },
   ];
   const hour = new Date().getHours();
   const greet = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
@@ -1607,11 +1629,11 @@ function exportConversation() {
 
 /* ─── CMD+K ──────────────────────────────────────────────────── */
 const CMD_ITEMS = [
-  { icon:'➕', label:'New conversation',    desc:'Start a fresh session',         kbd:['⌘','N'], fn:() => { closeCmdK(); newConversation(); } },
-  { icon:'📥', label:'Export as Markdown',  desc:'Download conversation as .md',   kbd:['⌘','E'], fn:() => { closeCmdK(); exportConversation(); } },
-  { icon:'🌙', label:'Toggle dark mode',    desc:'Switch light / dark theme',      kbd:['⌘','D'], fn:() => { closeCmdK(); toggleDark(); } },
-  { icon:'🔍', label:'Search conversation', desc:'Find text in this session',      kbd:['⌘','F'], fn:() => { closeCmdK(); if(!document.getElementById('searchBar').classList.contains('open')) toggleSearch(); } },
-  { icon:'📌', label:'View pinned responses',desc:'Show pinned messages',          kbd:[],        fn:() => { closeCmdK(); if(pinned.length) { document.getElementById('pinnedStrip').classList.add('open'); updateTopPad(); } } },
+  { icon:ICONS.plus,     label:'New conversation',    desc:'Start a fresh session',         kbd:['⌘','N'], fn:() => { closeCmdK(); newConversation(); } },
+  { icon:ICONS.download, label:'Export as Markdown',  desc:'Download conversation as .md',   kbd:['⌘','E'], fn:() => { closeCmdK(); exportConversation(); } },
+  { icon:ICONS.moon,     label:'Toggle dark mode',    desc:'Switch light / dark theme',      kbd:['⌘','D'], fn:() => { closeCmdK(); toggleDark(); } },
+  { icon:ICONS.search,   label:'Search conversation', desc:'Find text in this session',      kbd:['⌘','F'], fn:() => { closeCmdK(); if(!document.getElementById('searchBar').classList.contains('open')) toggleSearch(); } },
+  { icon:ICONS.pin,      label:'View pinned responses',desc:'Show pinned messages',          kbd:[],        fn:() => { closeCmdK(); if(pinned.length) { document.getElementById('pinnedStrip').classList.add('open'); updateTopPad(); } } },
 ];
 
 let cmdFocusIdx = -1;
@@ -1760,15 +1782,66 @@ function removeUpload() {
   $input.placeholder = 'Ask a scientific question, analyze a study, explore medical evidence… (⌘K for commands)';
 }
 
-function toggleVoice() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+/* Voice input records audio in the browser (MediaRecorder) and sends it to
+ * the server for transcription with Whisper. This replaces the browser's
+ * Web Speech API, which throws "network" errors in Edge / corporate networks
+ * and does not work in the packaged desktop app. */
+async function toggleVoice() {
   const btn = document.getElementById('voiceBtn');
-  if (!SR) { alert('Voice input is not supported in this browser.'); return; }
-  if (voiceOn) { recog?.stop(); return; }
-  recog = new SR(); recog.lang = 'en-US'; recog.start();
+
+  if (voiceOn) { mediaRecorder?.stop(); return; }   // second click = stop & send
+
+  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+    toast('Voice input is not supported in this browser.', 'amber');
+    return;
+  }
+
+  try {
+    voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (_) {
+    toast('Microphone blocked — allow mic access in your browser settings.', 'amber');
+    return;
+  }
+
+  audioChunks = [];
+  mediaRecorder = new MediaRecorder(voiceStream);
+  mediaRecorder.ondataavailable = e => { if (e.data.size) audioChunks.push(e.data); };
+  mediaRecorder.onstop = async () => {
+    voiceOn = false; btn.style.color = ''; btn.style.background = '';
+    voiceStream?.getTracks().forEach(t => t.stop());   // release the mic
+    const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+    if (blob.size) await transcribeBlob(blob);
+  };
+
+  mediaRecorder.start();
   voiceOn = true; btn.style.color = 'var(--red)'; btn.style.background = 'var(--surface-2)';
-  recog.onresult = e => { $input.value += e.results[0][0].transcript; autoResize($input); $send.disabled = false; };
-  recog.onend = () => { voiceOn = false; btn.style.color = ''; btn.style.background = ''; };
+  $input.placeholder = 'Listening… click the mic again to stop';
+}
+
+async function transcribeBlob(blob) {
+  const btn = document.getElementById('voiceBtn');
+  const restorePlaceholder = () =>
+    ($input.placeholder = 'Ask a scientific question, analyze a study, explore medical evidence… (⌘K for commands)');
+  btn.disabled = true;
+  $input.placeholder = 'Transcribing…';
+  try {
+    const ext = (blob.type.split('/')[1] || 'webm').split(';')[0];
+    const fd = new FormData();
+    fd.append('audio', blob, 'recording.' + ext);
+    const res = await fetch('/api/transcribe', { method: 'POST', body: fd });
+    if (!res.ok) throw new Error('http ' + res.status);
+    const text = ((await res.json()).text || '').trim();
+    if (!text) { toast('No speech detected — try again.', 'amber'); return; }
+    const base = $input.value;
+    const sep = base && !/\s$/.test(base) ? ' ' : '';
+    $input.value = base + sep + text;
+    autoResize($input); $send.disabled = !$input.value.trim(); $input.focus();
+  } catch (_) {
+    toast('Transcription failed. Please try again.', 'amber');
+  } finally {
+    btn.disabled = false;
+    restorePlaceholder();
+  }
 }
 
 function toggleShortcuts() {

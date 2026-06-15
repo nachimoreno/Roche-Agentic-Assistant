@@ -28,7 +28,7 @@ from uuid import UUID
 sys.path.insert(0, str(Path(__file__).parent))
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -36,7 +36,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from auth import get_current_user, hash_password, verify_password
 from db import User
-from llm import LLMAuthError
+from llm import LLMAuthError, transcribe_audio
 from logging_setup import setup_logging
 from main import build_assistant, build_engine
 from orchestrator import Assistant, StreamDone, StreamMeta, StreamToken
@@ -209,6 +209,45 @@ def logout(request: Request):
 @app.get("/api/auth/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user)):
     return _user_out(user)
+
+
+# ---------------------------------------------------------------------------
+# Voice input — server-side speech-to-text
+# ---------------------------------------------------------------------------
+
+# Guard against oversized uploads. Voice prompts are short; 25 MB is already
+# generous and matches Groq's transcription size limit.
+_MAX_AUDIO_BYTES = 25 * 1024 * 1024
+
+
+@app.post("/api/transcribe")
+async def transcribe(
+    audio: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+):
+    """Transcribe a recorded voice clip to text (Groq Whisper).
+
+    The browser records with MediaRecorder and POSTs the clip here, so voice
+    input no longer depends on the browser's Web Speech API (which errors out
+    in Edge / corporate networks / the desktop app).
+    """
+    data = await audio.read()
+    if not data:
+        raise HTTPException(status_code=422, detail="Empty audio upload.")
+    if len(data) > _MAX_AUDIO_BYTES:
+        raise HTTPException(status_code=413, detail="Audio clip too large.")
+
+    try:
+        text = transcribe_audio(
+            api_key=_settings.groq_api_key,
+            audio=data,
+            filename=audio.filename or "recording.webm",
+        )
+    except Exception as exc:  # noqa: BLE001 — surface a clean 502 to the client
+        logger.error("api.transcribe.failed", extra={"error": str(exc)})
+        raise HTTPException(status_code=502, detail="Transcription failed.")
+
+    return {"text": text}
 
 
 # ---------------------------------------------------------------------------
