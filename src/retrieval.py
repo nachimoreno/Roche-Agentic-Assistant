@@ -220,7 +220,18 @@ def _split_by_h2(text: str) -> list[tuple[str, str]]:
 def _split_long(text: str, max_chars: int) -> list[str]:
     if len(text) <= max_chars:
         return [text]
-    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    # Split on paragraph boundaries first. PDFs/DOCX often arrive with no
+    # double-newlines at all, so a single "paragraph" can be the whole
+    # document — `_hard_wrap` guarantees no piece exceeds max_chars before
+    # we pack them, otherwise an oversized paragraph would become one giant
+    # chunk and blow the LLM context limit.
+    paragraphs: list[str] = []
+    for block in text.split("\n\n"):
+        block = block.strip()
+        if not block:
+            continue
+        paragraphs.extend(_hard_wrap(block, max_chars))
+
     chunks: list[str] = []
     buffer: list[str] = []
     buffer_len = 0
@@ -235,6 +246,36 @@ def _split_long(text: str, max_chars: int) -> list[str]:
     if buffer:
         chunks.append("\n\n".join(buffer))
     return chunks
+
+
+def _hard_wrap(text: str, max_chars: int) -> list[str]:
+    """Break a single block into pieces no longer than max_chars.
+
+    Prefers to cut on whitespace (sentence/word boundaries) so chunks stay
+    readable; falls back to a hard character cut only when a single token is
+    itself longer than max_chars.
+    """
+    if len(text) <= max_chars:
+        return [text]
+    pieces: list[str] = []
+    start = 0
+    n = len(text)
+    while start < n:
+        end = start + max_chars
+        if end >= n:
+            tail = text[start:].strip()
+            if tail:
+                pieces.append(tail)
+            break
+        # Back off to the last whitespace within the window for a clean cut.
+        cut = max(text.rfind(" ", start, end), text.rfind("\n", start, end))
+        if cut <= start:
+            cut = end  # no whitespace — hard cut mid-token
+        piece = text[start:cut].strip()
+        if piece:
+            pieces.append(piece)
+        start = cut
+    return pieces
 
 
 def _hash(text: str) -> str:
