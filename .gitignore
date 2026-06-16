@@ -20,3 +20,6 @@ data/app.db
 data/app.db-journal
 .chroma/
 logs/
+# Local dev server stdout/stderr captures
+server.out.log
+server.err.log

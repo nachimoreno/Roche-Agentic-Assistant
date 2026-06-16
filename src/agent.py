@@ -88,9 +88,15 @@ rules below strictly.
 ## Rules
 
 1. For operational questions, answer ONLY from the provided context
-   chunks. If the answer is not in the context, say you do not have that
-   information and suggest where the scientist could look (for example,
-   the Application Catalog or ServiceNow).
+   chunks. Handle a missing answer in one of two ways:
+   a. If the request is ambiguous — for example the context holds several
+      documents or instruments that could match (different cobas analyzers,
+      multiple handbooks) — ask ONE short clarifying question naming the
+      options, rather than guessing. Do not ask more than one.
+   b. If nothing in the context is relevant, say you do not have that
+      information and suggest where to look (for example, the Application
+      Catalog or ServiceNow). Do not ask a clarifying question in this case.
+   A clarifying question needs no citations.
 2. Respond in {language}. If the context is in English, translate your
    answer into {language} naturally.
 3. Be concise and direct. Scientists are often standing in a lab — give
@@ -178,7 +184,9 @@ class RAGAgent:
         language: str,
         history: Sequence[Turn] = (),
     ) -> AnswerResult:
-        chunks = self._docs.retrieve(message, k=self._top_k)
+        chunks = self._docs.retrieve(
+            _retrieval_query(message, history), k=self._top_k
+        )
         context = _format_context(chunks)
         system = _SYSTEM_PROMPT_TEMPLATE.format(language=language, context=context)
 
@@ -214,7 +222,9 @@ class RAGAgent:
         the post-delimiter JSON tail. The `---CITATIONS---` sentinel and the
         JSON after it are never leaked to the caller as prose.
         """
-        chunks = self._docs.retrieve(message, k=self._top_k)
+        chunks = self._docs.retrieve(
+            _retrieval_query(message, history), k=self._top_k
+        )
         context = _format_context(chunks)
         system = _STREAM_SYSTEM_PROMPT_TEMPLATE.format(language=language, context=context)
 
@@ -315,6 +325,21 @@ def _parse_citations(tail: str) -> list[Citation]:
             "agent.stream.citations_unparseable", extra={"tail": tail[:200]}
         )
         return []
+
+
+def _retrieval_query(message: str, history: Sequence[Turn]) -> str:
+    """Build the vector-search query for this turn.
+
+    Follow-ups like "yes, that one" or "what about the rotor?" carry no
+    retrievable terms on their own, so retrieval on the bare message finds
+    nothing. We prepend the most recent prior *user* turn to anchor the
+    search on the topic under discussion; the current message comes last so
+    its terms still dominate for genuinely new questions.
+    """
+    prev_user = next(
+        (t.content for t in reversed(history) if t.role == "user"), ""
+    )
+    return f"{prev_user}\n{message}" if prev_user else message
 
 
 def _format_context(chunks) -> str:

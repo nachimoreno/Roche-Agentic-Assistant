@@ -92,7 +92,15 @@ class FakeLLMClient:
             ) else "english"
             if any(w in user.lower() for w in ("confusing", "frustrat", "hate", "love", "great")):
                 emotion = "confused" if "confusing" in user.lower() else "frustrated"
-                return {"language": language, "type": "feedback", "emotion": emotion}
+                # A complaint that also asks something ("...how do I X?") embeds
+                # an answerable question.
+                contains_question = "how" in user.lower() or "?" in user
+                return {
+                    "language": language,
+                    "type": "feedback",
+                    "emotion": emotion,
+                    "contains_question": contains_question,
+                }
             return {"language": language, "type": "question"}
 
         # RAG-agent schema.
@@ -294,6 +302,60 @@ def test_multi_turn_history_grows_in_order(fake_assistant):
     turns = sessions.recent_turns(sid, n=10)
     roles = [t.role for t in turns]
     assert roles == ["user", "assistant", "user", "assistant"]
+
+
+def test_classifier_receives_prior_turns_on_followup(fake_assistant):
+    """Routing must be context-aware: a short follow-up like "yes, that's
+    the one" is only interpretable against the previous turn, so the
+    conversation layer must be fed the prior turns (not just the bare
+    message). Regression test for follow-ups mis-routed to feedback."""
+    assistant, _, _ = fake_assistant
+    sid = new_id()
+    assistant.handle(sid, "How do I clean the centrifuge?")
+
+    llm = assistant._cl._llm
+    llm.calls.clear()
+    assistant.handle(sid, "yes, that is the one")
+
+    classify_user = llm.calls[0]["user"]
+    assert "CONVERSATION SO FAR" in classify_user
+    assert "centrifuge" in classify_user
+    assert "LATEST MESSAGE" in classify_user
+    assert classify_user.rstrip().endswith("yes, that is the one")
+
+
+def test_feedback_with_embedded_question_answers_and_logs(fake_assistant):
+    # A complaint that also asks a real question must be answered (RAG path)
+    # AND still recorded as feedback.
+    assistant, sessions, feedback_repo = fake_assistant
+    sid = new_id()
+    resp = assistant.handle(
+        sid, "this onboarding is so confusing, how do I clean the centrifuge?"
+    )
+
+    assert resp.analysis.type == "feedback"
+    assert resp.analysis.contains_question is True
+    assert len(resp.citations) >= 1          # it actually answered the question
+    assert "isopropyl" in resp.text.lower()
+    assert len(feedback_repo.list()) == 1    # feedback still logged
+
+    turns = sessions.recent_turns(sid, n=10)
+    assert [t.role for t in turns] == ["user", "assistant"]
+    assert "isopropyl" in turns[-1].content.lower()
+
+
+def test_stream_feedback_with_embedded_question_streams_answer(fake_assistant):
+    assistant, _, feedback_repo = fake_assistant
+    sid = new_id()
+    events = list(assistant.handle_stream(
+        sid, "this is frustrating, how do I clean the centrifuge?"
+    ))
+
+    assert events[0].analysis.type == "feedback"
+    done = events[-1]
+    assert isinstance(done, StreamDone)
+    assert len(done.citations) >= 1          # answered, not just acked
+    assert len(feedback_repo.list()) == 1    # feedback still logged
 
 
 # ---------------------------------------------------------------------------

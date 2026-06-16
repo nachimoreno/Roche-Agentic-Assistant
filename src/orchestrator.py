@@ -128,6 +128,16 @@ class Assistant:
         self._attribution = attribution
         self._history_turns = history_turns
 
+    def _history_for(self, session_id: UUID) -> list[AgentTurn]:
+        """Recent turns as agent `Turn`s, for both classification and RAG.
+
+        Call this BEFORE persisting the current user message so the result
+        contains only prior turns. Both the conversation layer (routing) and
+        the RAG agent consume the same window.
+        """
+        rows = self._sessions.recent_turns(session_id, n=self._history_turns)
+        return [AgentTurn(role=t.role, content=t.content) for t in rows]
+
     # ------------------------------------------------------------------
     # Attribution helpers
     # ------------------------------------------------------------------
@@ -169,7 +179,12 @@ class Assistant:
 
         self._sessions.get_or_create(session_id, tenant_id=tenant_id, user_id=user_id)
 
-        analysis = self._cl.analyze(message)
+        # Load prior turns BEFORE classifying so routing is context-aware:
+        # a short reply like "yes, that's the one" only makes sense as a
+        # continuation of the previous turn. Loaded here (before the current
+        # user turn is written) so it already excludes the new message.
+        history = self._history_for(session_id)
+        analysis = self._cl.analyze(message, history=history)
 
         self._sessions.append_turn(
             session_id,
@@ -191,26 +206,23 @@ class Assistant:
                 )
             )
             self._attribute_text_feedback(fb.id, message, tenant_id)
-            ack = _ack_for(analysis.language)
-            ack_turn = self._sessions.append_turn(
-                session_id,
-                role="assistant",
-                content=ack,
-                language=analysis.language,
-                tenant_id=tenant_id,
-            )
-            return Response(
-                text=ack, analysis=analysis, citations=[], turn_id=ack_turn.id
-            )
+            # If the feedback also embeds a real question, answer it (the
+            # feedback is still logged above) instead of only acknowledging.
+            if not analysis.contains_question:
+                ack = _ack_for(analysis.language)
+                ack_turn = self._sessions.append_turn(
+                    session_id,
+                    role="assistant",
+                    content=ack,
+                    language=analysis.language,
+                    tenant_id=tenant_id,
+                )
+                return Response(
+                    text=ack, analysis=analysis, citations=[], turn_id=ack_turn.id
+                )
 
-        # Question path — load recent history (excluding the user turn we
-        # just wrote, which is the same as `message`) and run RAG.
-        history_rows = self._sessions.recent_turns(session_id, n=self._history_turns)
-        history = [
-            AgentTurn(role=t.role, content=t.content)
-            for t in history_rows[:-1]   # drop the just-appended user turn
-        ]
-
+        # Question path — also handles feedback that embeds a question. Reuse
+        # the history already loaded for classification.
         answer: AnswerResult = self._agent.answer(
             message=message,
             language=analysis.language,
@@ -260,7 +272,9 @@ class Assistant:
 
         self._sessions.get_or_create(session_id, tenant_id=tenant_id, user_id=user_id)
 
-        analysis = self._cl.analyze(message)
+        # Context-aware classification (see `handle`): load prior turns first.
+        history = self._history_for(session_id)
+        analysis = self._cl.analyze(message, history=history)
         self._sessions.append_turn(
             session_id,
             role="user",
@@ -282,23 +296,21 @@ class Assistant:
                 )
             )
             self._attribute_text_feedback(fb.id, message, tenant_id)
-            ack = _ack_for(analysis.language)
-            yield StreamToken(text=ack)
-            ack_turn = self._sessions.append_turn(
-                session_id,
-                role="assistant",
-                content=ack,
-                language=analysis.language,
-                tenant_id=tenant_id,
-            )
-            yield StreamDone(text=ack, citations=[], turn_id=ack_turn.id)
-            return
-
-        history_rows = self._sessions.recent_turns(session_id, n=self._history_turns)
-        history = [
-            AgentTurn(role=t.role, content=t.content)
-            for t in history_rows[:-1]   # drop the just-appended user turn
-        ]
+            # Pure feedback gets an acknowledgement; feedback that also embeds
+            # a real question falls through to the streaming answer below (the
+            # feedback is still logged above).
+            if not analysis.contains_question:
+                ack = _ack_for(analysis.language)
+                yield StreamToken(text=ack)
+                ack_turn = self._sessions.append_turn(
+                    session_id,
+                    role="assistant",
+                    content=ack,
+                    language=analysis.language,
+                    tenant_id=tenant_id,
+                )
+                yield StreamDone(text=ack, citations=[], turn_id=ack_turn.id)
+                return
 
         full_text = ""
         citations: list[Citation] = []

@@ -285,6 +285,31 @@ def test_dashboard_route_is_gone(client):
 
 
 # ---------------------------------------------------------------------------
+# Timestamp serialisation — must carry an explicit UTC offset so the browser
+# does not render it in local time (the "2h ago right after sending" bug).
+# ---------------------------------------------------------------------------
+
+def test_iso_utc_stamps_naive_datetime_as_utc():
+    from datetime import datetime, timezone
+
+    naive = datetime(2026, 6, 16, 17, 7, 8)        # as SQLite returns it
+    out = api._iso_utc(naive)
+    assert out.endswith("+00:00")
+    assert datetime.fromisoformat(out) == naive.replace(tzinfo=timezone.utc)
+
+
+def test_iso_utc_converts_aware_datetime_to_utc():
+    from datetime import datetime, timedelta, timezone
+
+    aware = datetime(2026, 6, 16, 19, 7, 8, tzinfo=timezone(timedelta(hours=2)))
+    out = api._iso_utc(aware)
+    assert out.endswith("+00:00")
+    assert datetime.fromisoformat(out) == datetime(
+        2026, 6, 16, 17, 7, 8, tzinfo=timezone.utc
+    )
+
+
+# ---------------------------------------------------------------------------
 # Streaming chat (SSE)
 # ---------------------------------------------------------------------------
 
