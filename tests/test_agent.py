@@ -20,6 +20,7 @@ from agent import (
     _format_context,
     _overlap,
     _parse_citations,
+    _retrieval_query,
 )
 from vector_store import Chunk
 
@@ -132,6 +133,50 @@ def test_answer_retrieves_with_configured_top_k():
     )
     agent.answer("how do I clean it?", language="english")
     assert docs.calls == [("how do I clean it?", 7)]
+
+
+# ---------------------------------------------------------------------------
+# _retrieval_query — context-aware search for follow-ups
+# ---------------------------------------------------------------------------
+
+def test_retrieval_query_is_bare_message_without_history():
+    assert _retrieval_query("how do I clean the centrifuge?", []) == (
+        "how do I clean the centrifuge?"
+    )
+
+
+def test_retrieval_query_anchors_followup_on_prior_user_turn():
+    history = [
+        Turn(role="user", content="how do I clean the centrifuge?"),
+        Turn(role="assistant", content="Use a 70% isopropyl wipe."),
+    ]
+    q = _retrieval_query("what about the rotor?", history)
+    assert "how do I clean the centrifuge?" in q
+    assert q.endswith("what about the rotor?")
+
+
+def test_retrieval_query_uses_most_recent_user_turn():
+    history = [
+        Turn(role="user", content="first topic"),
+        Turn(role="assistant", content="..."),
+        Turn(role="user", content="second topic"),
+        Turn(role="assistant", content="..."),
+    ]
+    q = _retrieval_query("yes", history)
+    assert "second topic" in q
+    assert "first topic" not in q
+
+
+def test_answer_uses_history_anchored_query_for_retrieval():
+    agent, docs, _ = _make_agent(
+        [_chunk("x", source_id="a.md")],
+        {"text": "ok", "citations": []},
+    )
+    history = [Turn(role="user", content="how do I clean the centrifuge?")]
+    agent.answer("yes, that one", language="english", history=history)
+    query, _k = docs.calls[0]
+    assert "how do I clean the centrifuge?" in query
+    assert "yes, that one" in query
 
 
 def test_answer_builds_prompt_with_language_and_context():
