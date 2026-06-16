@@ -34,7 +34,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from auth import get_current_user, hash_password, require_admin, verify_password
 from db import User, utcnow
@@ -226,6 +226,19 @@ def _user_out(user: User) -> UserOut:
     )
 
 
+def _iso_utc(dt: datetime) -> str:
+    """Serialize a stored timestamp as an explicit-UTC ISO string.
+
+    Timestamps are written in UTC, but SQLite returns them tz-naive, so a bare
+    `.isoformat()` has no offset and browsers parse it as *local* time (showing
+    e.g. "2h ago" right after sending). Stamping UTC makes the client parse it
+    correctly regardless of the viewer's timezone.
+    """
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat()
+
+
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
@@ -310,7 +323,7 @@ def _parse_sid(session_id: str) -> UUID:
 
 
 def _session_item(s) -> SessionItemOut:
-    return SessionItemOut(id=str(s.id), title=s.title, created_at=s.created_at.isoformat())
+    return SessionItemOut(id=str(s.id), title=s.title, created_at=_iso_utc(s.created_at))
 
 
 def _require_owned(request: Request, sid: UUID, user: User):
@@ -359,7 +372,7 @@ def get_messages(session_id: str, request: Request, user: User = Depends(get_cur
             role=t.role,
             content=t.content,
             language=t.language,
-            created_at=t.created_at.isoformat(),
+            created_at=_iso_utc(t.created_at),
         )
         for t in request.app.state.sessions.messages(sid)
     ]
@@ -419,7 +432,7 @@ def append_partial_message(
         role=t.role,
         content=t.content,
         language=t.language,
-        created_at=t.created_at.isoformat(),
+        created_at=_iso_utc(t.created_at),
     )
 
 
