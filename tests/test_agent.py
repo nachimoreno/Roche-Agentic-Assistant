@@ -14,9 +14,11 @@ from typing import Any, Sequence
 from agent import (
     AnswerComplete,
     AnswerResult,
+    Citation,
     RAGAgent,
     TextDelta,
     Turn,
+    _clean_citation_value,
     _format_context,
     _overlap,
     _parse_citations,
@@ -25,12 +27,20 @@ from agent import (
 from vector_store import Chunk
 
 
-def _chunk(text: str, *, source_id: str | None = None, section: str | None = None) -> Chunk:
+def _chunk(
+    text: str,
+    *,
+    source_id: str | None = None,
+    section: str | None = None,
+    title: str | None = None,
+) -> Chunk:
     meta: dict[str, Any] = {}
     if source_id is not None:
         meta["source_id"] = source_id
     if section is not None:
         meta["section"] = section
+    if title is not None:
+        meta["title"] = title
     return Chunk(id="c", text=text, metadata=meta, score=0.9)
 
 
@@ -44,19 +54,29 @@ def test_format_context_empty_returns_placeholder():
 
 def test_format_context_includes_source_and_section_header():
     out = _format_context([_chunk("wipe it down", source_id="06_cleaning.md", section="Centrifuges")])
-    assert "[source: 06_cleaning.md §Centrifuges]" in out
+    assert '[source="06_cleaning.md" section="Centrifuges"]' in out
     assert "wipe it down" in out
+
+
+def test_format_context_shows_human_title_for_readability():
+    # The title is shown as document="..." for the model's readability, but the
+    # cited key (source="...") stays the stable id so attribution is unaffected.
+    out = _format_context([
+        _chunk("wipe it down", source_id="06_cleaning.md",
+               section="Centrifuges", title="Cleaning Laboratory Devices")
+    ])
+    assert '[source="06_cleaning.md" document="Cleaning Laboratory Devices" section="Centrifuges"]' in out
 
 
 def test_format_context_omits_section_when_absent():
     out = _format_context([_chunk("body text", source_id="06_cleaning.md")])
-    assert "[source: 06_cleaning.md]" in out
-    assert "§" not in out
+    assert '[source="06_cleaning.md"]' in out
+    assert "section=" not in out
 
 
 def test_format_context_falls_back_to_unknown_source():
     out = _format_context([_chunk("orphan text")])
-    assert "[source: unknown]" in out
+    assert '[source="unknown"]' in out
 
 
 def test_format_context_joins_multiple_chunks_with_separator():
@@ -73,13 +93,19 @@ def test_format_context_joins_multiple_chunks_with_separator():
 # ---------------------------------------------------------------------------
 
 class FakeDocumentStore:
-    def __init__(self, chunks):
+    def __init__(self, chunks, meta=None):
         self._chunks = chunks
+        # source_id -> {"title", "process", "department"}, mirroring the real
+        # DocumentStore.doc_metadata used for citation title enrichment.
+        self._meta = meta or {}
         self.calls: list[tuple] = []
 
     def retrieve(self, query, k=4):
         self.calls.append((query, k))
         return self._chunks
+
+    def doc_metadata(self, source_id):
+        return self._meta.get(source_id)
 
 
 class RecordingLLM:
@@ -186,7 +212,7 @@ def test_answer_builds_prompt_with_language_and_context():
     )
     agent.answer("question", language="german")
     assert "german" in llm.last["system"]
-    assert "[source: 06_cleaning.md §Centrifuges]" in llm.last["system"]
+    assert '[source="06_cleaning.md" section="Centrifuges"]' in llm.last["system"]
     assert "use isopropyl" in llm.last["system"]
     assert llm.last["user"] == "question"
 
@@ -304,4 +330,109 @@ def test_answer_stream_builds_streaming_prompt_with_language_and_context():
     list(agent.answer_stream("question", language="french"))
     assert "french" in llm.last["system"]
     assert "---CITATIONS---" in llm.last["system"]      # streaming output contract
-    assert "[source: 06_cleaning.md §Centrifuges]" in llm.last["system"]
+    assert '[source="06_cleaning.md" section="Centrifuges"]' in llm.last["system"]
+
+
+# ---------------------------------------------------------------------------
+# Citation sanitization — _clean_citation_value strips leaked header syntax
+# ---------------------------------------------------------------------------
+
+def test_clean_citation_value_strips_leading_document_key():
+    assert _clean_citation_value('document="Cleaning Guide"') == "Cleaning Guide"
+
+
+def test_clean_citation_value_strips_leading_source_and_section_keys():
+    assert _clean_citation_value("source=06_cleaning.md") == "06_cleaning.md"
+    assert _clean_citation_value("section=Centrifuges") == "Centrifuges"
+
+
+def test_clean_citation_value_strips_section_heading_merged_on_title():
+    assert (
+        _clean_citation_value("Cleaning Laboratory Devices §Centrifuges")
+        == "Cleaning Laboratory Devices"
+    )
+
+
+def test_clean_citation_value_strips_trailing_merged_key():
+    assert (
+        _clean_citation_value('Cleaning Guide section="Centrifuges"')
+        == "Cleaning Guide"
+    )
+
+
+def test_clean_citation_value_strips_surrounding_quotes():
+    assert _clean_citation_value('"Just A Title"') == "Just A Title"
+    assert _clean_citation_value("'Just A Title'") == "Just A Title"
+
+
+def test_clean_citation_value_leaves_clean_value_untouched():
+    assert _clean_citation_value("06_cleaning.md") == "06_cleaning.md"
+
+
+def test_citation_validator_normalises_leaked_header_syntax():
+    # Whatever shape the model emits, the cited key and section come out clean.
+    c = Citation(source='document="06_cleaning.md"', section='Centrifuges section="x"')
+    assert c.source == "06_cleaning.md"
+    assert c.section == "Centrifuges"
+
+
+# ---------------------------------------------------------------------------
+# Title enrichment — citations carry the human title while source stays the id
+# ---------------------------------------------------------------------------
+
+def test_answer_enriches_citation_title_from_doc_metadata():
+    docs = FakeDocumentStore(
+        [_chunk("use isopropyl", source_id="clean-001", section="Centrifuges",
+                title="Cleaning Laboratory Devices")],
+        meta={"clean-001": {
+            "title": "Cleaning Laboratory Devices",
+            "process": "equipment-cleaning",
+            "department": "lab-operations",
+        }},
+    )
+    llm = RecordingLLM({
+        "text": "Wipe it down.",
+        "citations": [{"source": "clean-001", "section": "Centrifuges"}],
+    })
+    agent = RAGAgent(document_store=docs, llm=llm)
+
+    result = agent.answer("how do I clean it?", language="english")
+    c = result.citations[0]
+    assert c.source == "clean-001"                       # id kept for attribution
+    assert c.title == "Cleaning Laboratory Devices"      # human title for display
+
+
+def test_answer_stream_enriches_citation_title_from_doc_metadata():
+    deltas = [
+        "Wipe it down.", "\n---CITATIONS---\n",
+        '[{"source": "clean-001", "section": "Centrifuges"}]',
+    ]
+    docs = FakeDocumentStore(
+        [_chunk("ctx", source_id="clean-001")],
+        meta={"clean-001": {"title": "Cleaning Laboratory Devices"}},
+    )
+    llm = StreamingLLM(deltas)
+    agent = RAGAgent(document_store=docs, llm=llm)
+
+    pieces = list(agent.answer_stream("how do I clean it?", language="english"))
+    complete = next(p for p in pieces if isinstance(p, AnswerComplete))
+    c = complete.citations[0]
+    assert c.source == "clean-001"
+    assert c.title == "Cleaning Laboratory Devices"
+
+
+def test_enrich_titles_leaves_title_none_for_unknown_source():
+    # Missing-title fallback: an id the store doesn't know stays title=None so
+    # the UI can fall back to `source`.
+    docs = FakeDocumentStore(
+        [_chunk("ctx", source_id="unknown-001")],
+        meta={},
+    )
+    llm = RecordingLLM({
+        "text": "ok",
+        "citations": [{"source": "unknown-001", "section": "S"}],
+    })
+    agent = RAGAgent(document_store=docs, llm=llm)
+    result = agent.answer("q", language="english")
+    assert result.citations[0].source == "unknown-001"
+    assert result.citations[0].title is None

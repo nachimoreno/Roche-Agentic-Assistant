@@ -1525,7 +1525,7 @@ function citHTML(cits) {
           <div class="cit-item">
             <span class="cit-num">${i+1}</span>
             <div>
-              <div class="cit-source">${esc(c.source)}</div>
+              <div class="cit-source">${esc(c.title || c.source)}</div>
               ${c.section?`<div class="cit-sub">${esc(c.section)}</div>`:''}
             </div>
           </div>`).join('')}
@@ -1660,7 +1660,7 @@ function exportConversation() {
     } else {
       md += `## Roche Scientific AI\n${m.content}\n`;
       if (m.citations?.length) {
-        md += `\n**Sources:**\n` + m.citations.map((c,i)=>`${i+1}. ${c.source}${c.section?` — ${c.section}`:''}`).join('\n') + '\n';
+        md += `\n**Sources:**\n` + m.citations.map((c,i)=>`${i+1}. ${c.title || c.source}${c.section?` — ${c.section}`:''}`).join('\n') + '\n';
       }
       md += '\n---\n\n';
     }
@@ -1982,7 +1982,7 @@ function parseMD(raw, cits) {
   s = s.replace(/^&gt; (.+)$/gm,'<blockquote>$1</blockquote>');
   s = s.replace(/\[(\d+)\]/g,(_,n)=>{
     const c=cits[n-1];
-    const tip = c ? `<span class="cite-tip">${esc(c.source)}${c.section?` — ${esc(c.section)}`:''}</span>` : '';
+    const tip = c ? `<span class="cite-tip">${esc(c.title || c.source)}${c.section?` — ${esc(c.section)}`:''}</span>` : '';
     return `<span class="cite-sup" aria-label="Citation ${n}">${n}${tip}</span>`;
   });
 

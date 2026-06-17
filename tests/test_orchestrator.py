@@ -195,6 +195,24 @@ def test_citations_resolve_process_from_front_matter(fake_assistant):
     assert cits[0].department == "lab-operations"
 
 
+def test_citation_exposes_human_title_while_source_stays_id(fake_assistant):
+    # Option A: the citation carries the human title for display, but `source`
+    # stays the source_id so the attribution join (and its process/department
+    # rollup) is unaffected. The fixture's H1 is "Cleaning Laboratory Devices".
+    assistant, sessions, _ = fake_assistant
+    sid = new_id()
+    resp = assistant.handle(sid, "How do I clean the centrifuge?")
+
+    cit = resp.citations[0]
+    assert cit.source == "06_cleaning_lab_devices.md"     # id for attribution
+    assert cit.title == "Cleaning Laboratory Devices"     # human title for UI
+
+    # Attribution still resolves off the id, unchanged by the title.
+    cits = sessions.citations_for_turn(resp.turn_id)
+    assert cits[0].source == "06_cleaning_lab_devices.md"
+    assert cits[0].process == "equipment-cleaning"
+
+
 def test_record_rating_attributes_via_citation_split(fake_assistant):
     assistant, _, feedback_repo = fake_assistant
     sid = new_id()
