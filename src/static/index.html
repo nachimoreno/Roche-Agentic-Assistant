@@ -709,7 +709,7 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
         <button class="upload-rm" onclick="removeUpload()" aria-label="Remove file">×</button>
       </div>
       <textarea class="composer-ta" id="msgInput" rows="1"
-        placeholder="Ask a scientific question, analyze a study, explore medical evidence… (⌘K for commands)"
+        placeholder="Ask about onboarding, equipment, samples, procedures — or report an issue… (⌘K for commands)"
         aria-label="Type your message"></textarea>
       <div class="composer-foot">
         <div class="c-tools">
@@ -726,11 +726,11 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
             </button>
             <div class="sc-popover" id="scPop" role="menu">
-              <button class="sc-item" role="menuitem" onclick="insertShortcut('Summarize the key clinical evidence for ')"><span style="font-size:15px">📋</span><div><div>Summarize evidence</div><div class="sc-item-desc">Clinical evidence summary</div></div></button>
-              <button class="sc-item" role="menuitem" onclick="insertShortcut('Compare the efficacy and safety profiles of ')"><span style="font-size:15px">⚖️</span><div><div>Compare therapies</div><div class="sc-item-desc">Side-by-side comparison</div></div></button>
-              <button class="sc-item" role="menuitem" onclick="insertShortcut('What is the mechanism of action of ')"><span style="font-size:15px">🔬</span><div><div>Mechanism of action</div><div class="sc-item-desc">MoA deep-dive</div></div></button>
-              <button class="sc-item" role="menuitem" onclick="insertShortcut('What are the latest treatment guidelines for ')"><span style="font-size:15px">📖</span><div><div>Treatment guidelines</div><div class="sc-item-desc">Latest guidelines</div></div></button>
-              <button class="sc-item" role="menuitem" onclick="insertShortcut('Analyze the safety and adverse event profile of ')"><span style="font-size:15px">🛡️</span><div><div>Safety profile</div><div class="sc-item-desc">AE &amp; safety analysis</div></div></button>
+              <button class="sc-item" role="menuitem" onclick="insertShortcut('How do I clean ')"><span style="font-size:15px">🧪</span><div><div>Cleaning steps</div><div class="sc-item-desc">Cleaning agent &amp; method</div></div></button>
+              <button class="sc-item" role="menuitem" onclick="insertShortcut('How do I request access to ')"><span style="font-size:15px">🔑</span><div><div>Request access</div><div class="sc-item-desc">Onboarding &amp; access</div></div></button>
+              <button class="sc-item" role="menuitem" onclick="insertShortcut('Report a problem with ')"><span style="font-size:15px">🛠️</span><div><div>Report an issue</div><div class="sc-item-desc">Flag broken equipment</div></div></button>
+              <button class="sc-item" role="menuitem" onclick="insertShortcut('How do I reserve ')"><span style="font-size:15px">📅</span><div><div>Book an instrument</div><div class="sc-item-desc">Reserve a shared instrument</div></div></button>
+              <button class="sc-item" role="menuitem" onclick="insertShortcut('How do I check the available stock of ')"><span style="font-size:15px">📦</span><div><div>Check stock</div><div class="sc-item-desc">Sample stock levels</div></div></button>
             </div>
           </div>
         </div>
@@ -1093,12 +1093,12 @@ function closeDrawer() {
 /* ─── WELCOME ────────────────────────────────────────────────── */
 function renderWelcome() {
   const items = [
-    { icon:'🔬', title:'Analyze a clinical study',  desc:'Upload or describe a study for detailed analysis',  q:'Can you analyze the methodology and key findings of a Phase III oncology clinical trial?' },
-    { icon:'🗺️', title:'Treatment landscape',        desc:'Comprehensive overview of available therapies',     q:'What is the current treatment landscape for HER2-positive metastatic breast cancer?' },
-    { icon:'📚', title:'Literature review',           desc:'Summarize the latest publications on a topic',      q:'Summarize the latest publications on CAR-T cell therapy in hematologic malignancies.' },
-    { icon:'⚖️', title:'Compare therapies',           desc:'Efficacy and safety side-by-side',                  q:'Compare the efficacy and safety of PD-1 versus PD-L1 inhibitors in NSCLC.' },
-    { icon:'⚗️', title:'Mechanism of action',         desc:'Molecular and cellular mechanisms',                 q:'Explain the mechanism of action of bispecific T-cell engagers in oncology.' },
-    { icon:'📋', title:'Evidence summary',            desc:'Evidence-based clinical summary',                   q:'What clinical evidence supports the use of bevacizumab in glioblastoma?' },
+    { icon:'🧪', title:'Clean a device',     desc:'Recommended agents and method',     q:"What's the recommended way to clean a centrifuge?" },
+    { icon:'🔑', title:'Get access',         desc:'Request access to a lab application', q:'Walk me through requesting access to a lab application.' },
+    { icon:'🛠️', title:'Report a problem',   desc:'Flag broken or failing equipment',  q:"Report that the plate reader in Lab 2 won't start." },
+    { icon:'📅', title:'Book an instrument', desc:'Reserve a shared instrument slot',   q:'How do I reserve a shared instrument?' },
+    { icon:'📦', title:'Check sample stock', desc:'On-hand vs available quantities',    q:'How do I check how much of a sample is available?' },
+    { icon:'☣️', title:'Decontamination',    desc:'Steps to take after a spill',        q:"What's the procedure after a liquid spill?" },
   ];
   const hour = new Date().getHours();
   const greet = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
@@ -1108,7 +1108,7 @@ function renderWelcome() {
   wrap.innerHTML = `<div class="welcome">
     <div class="welcome-emblem" aria-hidden="true">${ROCHE_WORDMARK}</div>
     <h1>${greet}${first ? `, <em>${esc(first)}</em>` : ''}</h1>
-    <p class="welcome-sub">Your intelligent scientific partner. Ask about medical evidence, clinical studies, treatment landscapes, and research insights.</p>
+    <p class="welcome-sub">Your lab operations assistant, grounded in Roche's internal documentation. Ask about onboarding, equipment, samples, and procedures — or report an issue.</p>
     <div class="sug-grid" role="list">
       ${items.map(s=>`<button class="sug-card" role="listitem" onclick="sendMessage(${JSON.stringify(s.q)})" aria-label="${s.title}">
         <span class="sc-icon" aria-hidden="true">${s.icon}</span>
@@ -1824,7 +1824,7 @@ function handleUpload(e) {
 function removeUpload() {
   pendingFile = null;
   document.getElementById('uploadBar').style.display = 'none';
-  $input.placeholder = 'Ask a scientific question, analyze a study, explore medical evidence… (⌘K for commands)';
+  $input.placeholder = 'Ask about onboarding, equipment, samples, procedures — or report an issue… (⌘K for commands)';
 }
 
 /* Voice input records audio in the browser (MediaRecorder) and sends it to
@@ -1866,7 +1866,7 @@ async function toggleVoice() {
 async function transcribeBlob(blob) {
   const btn = document.getElementById('voiceBtn');
   const restorePlaceholder = () =>
-    ($input.placeholder = 'Ask a scientific question, analyze a study, explore medical evidence… (⌘K for commands)');
+    ($input.placeholder = 'Ask about onboarding, equipment, samples, procedures — or report an issue… (⌘K for commands)');
   btn.disabled = true;
   $input.placeholder = 'Transcribing…';
   try {
@@ -2041,9 +2041,9 @@ function copyCode(id) {
 
 /* ─── FOLLOW-UPS ─────────────────────────────────────────────── */
 const FU = [
-  [{l:'Clinical implications',q:'What are the key clinical implications of this finding?'},{l:'Supporting evidence',q:'What supporting evidence exists for this?'},{l:'Compare alternatives',q:'How does this compare with alternative approaches?'}],
-  [{l:'Safety profile',q:'What is the safety and adverse event profile?'},{l:'Latest guidelines',q:'What do the latest clinical guidelines recommend?'},{l:'Mechanistic analysis',q:'Can you provide a deeper mechanistic analysis?'}],
-  [{l:'Biomarker data',q:'Is there relevant biomarker or genomic data to consider?'},{l:'Patient populations',q:'Which patient populations benefit most?'},{l:'Explore mechanisms',q:'Explain the underlying mechanism in more detail.'}],
+  [{l:'Which app?',q:'Which internal application do I use for this?'},{l:'Training needed?',q:'Is any training or approval required first?'},{l:'Who to contact',q:'Who should I contact if I get stuck?'}],
+  [{l:'Report a problem',q:'How do I report a problem with this?'},{l:'Safety precautions',q:'Are there any safety precautions I should take?'},{l:'Related procedures',q:'What related procedures should I know about?'}],
+  [{l:'Step by step',q:'Can you walk me through the steps one at a time?'},{l:'Where to find it',q:'Where can I find this in the documentation?'},{l:'How long?',q:'How long does this usually take?'}],
 ];
 function pickFU(s){ return FU[s.split('').reduce((a,c)=>a+c.charCodeAt(0),0)%FU.length]; }
 

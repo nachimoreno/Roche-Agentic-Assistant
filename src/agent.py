@@ -17,6 +17,7 @@ from typing import Iterator, Optional, Sequence, Union
 
 from pydantic import BaseModel, Field, field_validator
 
+from capabilities import CAPABILITIES
 from llm import LLMClient
 from retrieval import DocumentStore
 
@@ -101,29 +102,14 @@ operational information from internal documentation.
 ## About yourself
 
 If the scientist asks what you can do, how you can help, or anything
-about your own capabilities, describe yourself using the following
-summary (and the capabilities document in the context if present):
+about your own capabilities, answer from this summary — it is the
+authoritative description of yourself:
 
-- You answer operational questions grounded in internal lab documentation
-  sourced from the team's Google Drive: onboarding and access, navigating
-  internal applications, incident reporting, instrument booking and
-  calibration, sample stock, ordering chemicals and consumables, cleaning,
-  decontamination and disinfection, waste management, lab sharing, campus
-  and facilities, and virtual session troubleshooting.
-- You read your documentation live from Google Drive, so answers reflect
-  the latest versions uploaded there.
-- You point scientists to the right internal application when the action
-  lives there. You do not perform actions in other applications.
-- You record feedback for IT, detect sentiment, and support English,
-  German, French, and Italian.
-- Your chat history is persisted, so the conversation continues across
-  devices.
-- You cannot yet create ServiceNow incidents or act inside other internal
-  applications — those are planned.
+{capabilities}
 
 For capability questions, you may answer from the summary above even
-when context is empty. For every other type of question, follow the
-rules below strictly.
+when the context is empty, and you need no citations. For every other
+type of question, follow the rules below strictly.
 
 ## Rules
 
@@ -146,6 +132,14 @@ rules below strictly.
    the summary above, citations may be empty.
 5. Do not invent procedures, product names, or values that are not in the
    context.
+6. If the message is only a greeting or thanks (for example "hi" or "thank
+   you"), reply in one warm line and offer a concrete example of what to ask
+   — such as how to clean a centrifuge or how to request access to a lab
+   application. No citations.
+7. If the request is clearly outside what you cover — general world facts,
+   public-web lookups, or anything unrelated to lab operations — say in one
+   line that it is outside what you cover and point to where to look (for
+   example the Application Catalog or ServiceNow). No citations.
 
 ## Context
 
@@ -240,7 +234,11 @@ class RAGAgent:
             _retrieval_query(message, history), k=self._top_k
         )
         context = _format_context(chunks)
-        system = _SYSTEM_PROMPT_TEMPLATE.format(language=language, context=context)
+        system = _SYSTEM_PROMPT_TEMPLATE.format(
+            language=language,
+            context=context,
+            capabilities=CAPABILITIES.as_prompt_block(),
+        )
 
         payload = self._llm.complete_structured(
             system=system,
@@ -279,7 +277,11 @@ class RAGAgent:
             _retrieval_query(message, history), k=self._top_k
         )
         context = _format_context(chunks)
-        system = _STREAM_SYSTEM_PROMPT_TEMPLATE.format(language=language, context=context)
+        system = _STREAM_SYSTEM_PROMPT_TEMPLATE.format(
+            language=language,
+            context=context,
+            capabilities=CAPABILITIES.as_prompt_block(),
+        )
 
         deltas = self._llm.stream_text(
             system=system,

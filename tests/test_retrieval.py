@@ -60,8 +60,6 @@ def document_store(tmp_path_factory):
         ("how do I request access to a lab application",
          "01_onboarding_access_requests.md"),
         ("create an incident in ServiceNow", "03_incident_reporting.md"),
-        ("what can you help me with", "00_assistant_capabilities.md"),
-        ("what can the assistant do", "00_assistant_capabilities.md"),
     ],
 )
 def test_semantic_retrieval(document_store, query, expected_source):

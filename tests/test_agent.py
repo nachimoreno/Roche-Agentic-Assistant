@@ -24,6 +24,7 @@ from agent import (
     _parse_citations,
     _retrieval_query,
 )
+from capabilities import CAPABILITIES
 from vector_store import Chunk
 
 
@@ -250,6 +251,32 @@ def test_answer_uses_placeholder_context_when_no_chunks():
     agent, _, llm = _make_agent([], {"text": "I don't have that.", "citations": []})
     agent.answer("obscure question", language="english")
     assert "(no relevant documentation found)" in llm.last["system"]
+
+
+# ---------------------------------------------------------------------------
+# Self-knowledge — CAPABILITIES is always injected, even with empty context
+# ---------------------------------------------------------------------------
+
+def test_answer_injects_capabilities_even_with_empty_context():
+    # A capability question with no retrieved chunks: the agent must still hand
+    # the model its self-knowledge, so the answer never depends on retrieval.
+    agent, _, llm = _make_agent([], {"text": "...", "citations": []})
+    agent.answer("what can you do?", language="english")
+    system = llm.last["system"]
+    assert "(no relevant documentation found)" in system   # context truly empty
+    assert CAPABILITIES.as_prompt_block() in system        # but self-knowledge present
+    # ServiceNow is described as not-yet, never advertised as a capability.
+    can_part, _, cannot_part = system.partition("What you cannot do yet:")
+    assert "ServiceNow" in cannot_part
+    assert "ServiceNow" not in can_part
+
+
+def test_answer_stream_injects_capabilities_even_with_empty_context():
+    agent, _, llm = _stream_agent(["ok.", "\n---CITATIONS---\n", "[]"], chunks=[])
+    list(agent.answer_stream("what can you do?", language="english"))
+    system = llm.last["system"]
+    assert "(no relevant documentation found)" in system
+    assert CAPABILITIES.as_prompt_block() in system
 
 
 # ---------------------------------------------------------------------------
