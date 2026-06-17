@@ -785,7 +785,8 @@ let pinned     = []; // array of {ts, preview}
 let busy       = false;
 let autoScroll = true;
 let searchMatches = [], searchIdx = 0;
-let pendingFile = null, voiceOn = false, recog = null;
+let pendingFile = null, voiceOn = false;
+let mediaRecorder = null, audioChunks = [], voiceStream = null;
 let histIdx = -1; // prompt history navigation index
 let streamCtrl = null; // AbortController for the in-flight stream (Stop button)
 
@@ -1826,15 +1827,66 @@ function removeUpload() {
   $input.placeholder = 'Ask a scientific question, analyze a study, explore medical evidence… (⌘K for commands)';
 }
 
-function toggleVoice() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+/* Voice input records audio in the browser (MediaRecorder) and sends it to
+ * the server for transcription with Whisper. This replaces the browser's
+ * Web Speech API, which throws "network" errors in Edge / corporate networks
+ * and does not work in the packaged desktop app. */
+async function toggleVoice() {
   const btn = document.getElementById('voiceBtn');
-  if (!SR) { alert('Voice input is not supported in this browser.'); return; }
-  if (voiceOn) { recog?.stop(); return; }
-  recog = new SR(); recog.lang = 'en-US'; recog.start();
+
+  if (voiceOn) { mediaRecorder?.stop(); return; }   // second click = stop & send
+
+  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+    toast('Voice input is not supported in this browser.', 'amber');
+    return;
+  }
+
+  try {
+    voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (_) {
+    toast('Microphone blocked — allow mic access in your browser settings.', 'amber');
+    return;
+  }
+
+  audioChunks = [];
+  mediaRecorder = new MediaRecorder(voiceStream);
+  mediaRecorder.ondataavailable = e => { if (e.data.size) audioChunks.push(e.data); };
+  mediaRecorder.onstop = async () => {
+    voiceOn = false; btn.style.color = ''; btn.style.background = '';
+    voiceStream?.getTracks().forEach(t => t.stop());   // release the mic
+    const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+    if (blob.size) await transcribeBlob(blob);
+  };
+
+  mediaRecorder.start();
   voiceOn = true; btn.style.color = 'var(--red)'; btn.style.background = 'var(--surface-2)';
-  recog.onresult = e => { $input.value += e.results[0][0].transcript; autoResize($input); $send.disabled = false; };
-  recog.onend = () => { voiceOn = false; btn.style.color = ''; btn.style.background = ''; };
+  $input.placeholder = 'Listening… click the mic again to stop';
+}
+
+async function transcribeBlob(blob) {
+  const btn = document.getElementById('voiceBtn');
+  const restorePlaceholder = () =>
+    ($input.placeholder = 'Ask a scientific question, analyze a study, explore medical evidence… (⌘K for commands)');
+  btn.disabled = true;
+  $input.placeholder = 'Transcribing…';
+  try {
+    const ext = (blob.type.split('/')[1] || 'webm').split(';')[0];
+    const fd = new FormData();
+    fd.append('audio', blob, 'recording.' + ext);
+    const res = await fetch('/api/transcribe', { method: 'POST', body: fd });
+    if (!res.ok) throw new Error('http ' + res.status);
+    const text = ((await res.json()).text || '').trim();
+    if (!text) { toast('No speech detected — try again.', 'amber'); return; }
+    const base = $input.value;
+    const sep = base && !/\s$/.test(base) ? ' ' : '';
+    $input.value = base + sep + text;
+    autoResize($input); $send.disabled = !$input.value.trim(); $input.focus();
+  } catch (_) {
+    toast('Transcription failed. Please try again.', 'amber');
+  } finally {
+    btn.disabled = false;
+    restorePlaceholder();
+  }
 }
 
 function toggleShortcuts() {
