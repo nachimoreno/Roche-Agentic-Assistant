@@ -59,7 +59,11 @@ def _question_response() -> Response:
     return Response(
         text="Use a 70 percent isopropyl alcohol wipe.",
         analysis=AnalysisResult(language="english", type="question", emotion=None),
-        citations=[Citation(source="06_cleaning_lab_devices.md", section="Centrifuges")],
+        citations=[Citation(
+            source="06_cleaning_lab_devices.md",
+            section="Centrifuges",
+            title="Cleaning Laboratory Devices",
+        )],
     )
 
 
@@ -204,7 +208,11 @@ def test_chat_returns_text_and_mapped_citations(client):
     assert body["type"] == "question"
     assert body["emotion"] is None
     assert body["citations"] == [
-        {"source": "06_cleaning_lab_devices.md", "section": "Centrifuges"}
+        {
+            "source": "06_cleaning_lab_devices.md",
+            "section": "Centrifuges",
+            "title": "Cleaning Laboratory Devices",
+        }
     ]
 
 
@@ -364,7 +372,9 @@ def _parse_sse(body: str) -> list[tuple[str, dict]]:
 
 
 def test_stream_emits_meta_tokens_then_done(client):
-    cites = [Citation(source="06_cleaning.md", section="Centrifuges")]
+    cites = [Citation(
+        source="06_cleaning.md", section="Centrifuges", title="Cleaning Guide"
+    )]
     _inject(FakeStreamingAssistant(["Use ", "isopropyl."], cites))
     sid = str(UUID(int=10))
 
@@ -383,7 +393,9 @@ def test_stream_emits_meta_tokens_then_done(client):
     text = "".join(d["text"] for e, d in frames if e == "token")
     assert text == "Use isopropyl."
     done = frames[-1][1]
-    assert done["citations"] == [{"source": "06_cleaning.md", "section": "Centrifuges"}]
+    assert done["citations"] == [
+        {"source": "06_cleaning.md", "section": "Centrifuges", "title": "Cleaning Guide"}
+    ]
 
 
 def test_stream_rejects_malformed_session_id(client):

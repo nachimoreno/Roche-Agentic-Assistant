@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
-from typing import Iterator, Sequence, Union
+from typing import Iterator, Optional, Sequence, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from llm import LLMClient
 from retrieval import DocumentStore
@@ -31,9 +32,48 @@ _CITATION_SENTINEL = "\n---CITATIONS---"
 # Result schema — the LLM is asked to return this exact shape.
 # ---------------------------------------------------------------------------
 
+def _clean_citation_value(v: str) -> str:
+    """Strip context-header syntax the model sometimes copies verbatim.
+
+    The retrieval context labels each chunk
+    `[source="id" document="Title" section="Sec"]`. Models occasionally echo
+    that syntax into a citation field — e.g. a source of `document="Cleaning
+    Guide"` or `Title §Section`. We normalise back to the bare value so the
+    join key (and any title fallback) stays clean. This is defense-in-depth:
+    titles for display are enriched server-side from the source id, not taken
+    from what the model emits here.
+    """
+    v = v.strip()
+    # Drop a leading `document=` / `section=` / `source=` key the model copied.
+    m = re.match(r'^\s*(?:document|section|source)\s*=\s*(.*)$', v, re.IGNORECASE)
+    if m:
+        v = m.group(1).strip()
+    # Drop a trailing key the model merged in (e.g. `Title section="Sec"`).
+    v = re.split(r'\s+(?:document|section)\s*=', v, maxsplit=1, flags=re.IGNORECASE)[0]
+    # Drop a `§section` heading merged onto the title.
+    v = v.split(" §", 1)[0]
+    # Strip matching surrounding quotes.
+    v = v.strip()
+    if len(v) >= 2 and v[0] in "\"'" and v[-1] == v[0]:
+        v = v[1:-1].strip()
+    return v
+
+
 class Citation(BaseModel):
     source: str = Field(description="Source document identifier (filename or id).")
     section: str = Field(description="Section heading within the source.")
+    # Human-readable document title for display, enriched server-side from
+    # `source`'s metadata after the model returns. `source` stays the stable
+    # source_id so attribution still joins on it; the UI falls back to `source`
+    # when no title is known.
+    title: Optional[str] = Field(
+        default=None, description="Human-readable title for display (server-set)."
+    )
+
+    @field_validator("source", "section", mode="before")
+    @classmethod
+    def _normalise(cls, v):
+        return _clean_citation_value(v) if isinstance(v, str) else v
 
 
 class AnswerResult(BaseModel):
@@ -116,23 +156,35 @@ rules below strictly.
 _JSON_OUTPUT = """
 ## Output
 
+Each context chunk starts with a header like
+[source="some-id" document="Some Title" section="Some Section"]. When you
+cite, copy the source="..." identifier into "source" and the section="..."
+value into "section" — never merge them, and never put the document="..."
+title into "source".
+
 Return ONLY a JSON object with two fields:
 - "text": your answer in {language}
-- "citations": a list of objects with "source" (the source_id) and
-  "section" (the section heading), one for each context chunk you relied on.
+- "citations": a list of objects with "source" (the source="..." identifier)
+  and "section" (the section heading), one for each context chunk you relied on.
 """
 
 
 _STREAM_OUTPUT = """
 ## Output
 
+Each context chunk starts with a header like
+[source="some-id" document="Some Title" section="Some Section"]. Copy the
+source="..." identifier into "source" and the section="..." value into
+"section" — never merge them, and never put the document="..." title into
+"source".
+
 Write your complete answer in {language} as plain prose (no JSON, no
 markdown code fences). When the answer is finished, output a line containing
 exactly:
 ---CITATIONS---
-and then a JSON array of objects with "source" (the source_id) and "section"
-(the section heading), one per context chunk you relied on (an empty array []
-if you used none). Output nothing after the JSON array.
+and then a JSON array of objects with "source" (the source="..." identifier)
+and "section" (the section heading), one per context chunk you relied on (an
+empty array [] if you used none). Output nothing after the JSON array.
 """
 
 
@@ -199,6 +251,7 @@ class RAGAgent:
             max_tokens=self._max_tokens,
         )
         result = AnswerResult.model_validate(payload)
+        self._enrich_titles(result.citations)
         logger.info(
             "agent.answered",
             extra={
@@ -249,6 +302,7 @@ class RAGAgent:
             yield TextDelta(tail)
 
         citations = _parse_citations(splitter.citation_tail)
+        self._enrich_titles(citations)
         logger.info(
             "agent.streamed",
             extra={
@@ -258,6 +312,22 @@ class RAGAgent:
             },
         )
         yield AnswerComplete(text="".join(prose), citations=citations)
+
+    def _enrich_titles(self, citations: list[Citation]) -> None:
+        """Populate each citation's display `title` from document metadata.
+
+        `source` stays the source_id the model cited (attribution joins on it);
+        `title` is the human-readable name shown in the UI. We look it up
+        authoritatively from the store rather than trusting any title the model
+        emitted, and leave it ``None`` when the id is unknown so the UI can fall
+        back to `source`. No-op if the store can't resolve metadata.
+        """
+        lookup = getattr(self._docs, "doc_metadata", None)
+        if not callable(lookup):
+            return
+        for c in citations:
+            meta = lookup(c.source) or {}
+            c.title = meta.get("title")
 
 
 def _overlap(text: str, sentinel: str) -> int:
@@ -348,7 +418,18 @@ def _format_context(chunks) -> str:
     blocks = []
     for c in chunks:
         source = c.metadata.get("source_id", "unknown")
+        title = c.metadata.get("title")
         section = c.metadata.get("section", "")
-        header = f"[source: {source} §{section}]" if section else f"[source: {source}]"
+        # Show the human title (document="...") for readability so the model can
+        # name the document in its prose, but keep source="..." as the stable id
+        # the model is told to cite — attribution joins on that, and titles for
+        # display are enriched server-side from it. Title and section are kept
+        # as clearly separate quoted fields so the model never merges them.
+        parts = [f'source="{source}"']
+        if title:
+            parts.append(f'document="{title}"')
+        if section:
+            parts.append(f'section="{section}"')
+        header = "[" + " ".join(parts) + "]"
         blocks.append(f"{header}\n{c.text}")
     return "\n\n---\n\n".join(blocks)
