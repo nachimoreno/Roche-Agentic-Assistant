@@ -631,3 +631,72 @@ def test_admin_allowlist_promotes_on_login(client, monkeypatch):
     )
     assert r.status_code == 200 and r.json()["role"] == "admin"
     assert client.get("/api/analytics/summary").status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Voice input — POST /api/transcribe (Groq Whisper)
+#
+# `transcribe_audio` is mocked throughout: the fast suite never makes a live
+# Groq call. The endpoint reads the upload, enforces the 25 MB guard, and
+# returns the transcribed text.
+# ---------------------------------------------------------------------------
+
+def test_transcribe_requires_auth():
+    # No get_current_user override → the real dependency runs. Without a
+    # session cookie the request is rejected before any transcription happens.
+    api.app.dependency_overrides.pop(get_current_user, None)
+    unauthed = TestClient(api.app)
+    resp = unauthed.post(
+        "/api/transcribe",
+        files={"audio": ("clip.webm", b"audio-bytes", "audio/webm")},
+    )
+    assert resp.status_code == 401
+
+
+def test_transcribe_rejects_oversized_upload(client, monkeypatch):
+    # The guard must fire purely on size, before any transcription is attempted.
+    called = {"n": 0}
+
+    def _fake_transcribe(**kwargs):
+        called["n"] += 1
+        return "should not be reached"
+
+    monkeypatch.setattr(api, "transcribe_audio", _fake_transcribe)
+
+    oversized = b"\x00" * (api._MAX_AUDIO_BYTES + 1)
+    resp = client.post(
+        "/api/transcribe",
+        files={"audio": ("big.webm", oversized, "audio/webm")},
+    )
+    assert resp.status_code == 413
+    assert called["n"] == 0   # rejected before reaching the transcriber
+
+
+def test_transcribe_happy_path_returns_text(client, monkeypatch):
+    captured = {}
+
+    def _fake_transcribe(**kwargs):
+        captured.update(kwargs)
+        return "  Compare PD-1 versus PD-L1 inhibitors.  "
+
+    monkeypatch.setattr(api, "transcribe_audio", _fake_transcribe)
+
+    resp = client.post(
+        "/api/transcribe",
+        files={"audio": ("recording.webm", b"some-webm-bytes", "audio/webm")},
+    )
+    assert resp.status_code == 200
+    # The endpoint returns whatever the (mocked) transcriber produced.
+    assert resp.json() == {"text": "  Compare PD-1 versus PD-L1 inhibitors.  "}
+    # The recorded clip's bytes and filename are forwarded to the transcriber.
+    assert captured["audio"] == b"some-webm-bytes"
+    assert captured["filename"] == "recording.webm"
+
+
+def test_transcribe_rejects_empty_upload(client, monkeypatch):
+    monkeypatch.setattr(api, "transcribe_audio", lambda **kw: "unused")
+    resp = client.post(
+        "/api/transcribe",
+        files={"audio": ("empty.webm", b"", "audio/webm")},
+    )
+    assert resp.status_code == 422
