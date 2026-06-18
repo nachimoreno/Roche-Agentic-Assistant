@@ -271,6 +271,9 @@ textarea,input{font-family:var(--font)}
 .act-btn{display:flex;align-items:center;gap:4px;padding:4px 10px;background:transparent;border:1px solid transparent;border-radius:var(--r);font-size:11.5px;font-weight:500;color:var(--t4);transition:all var(--tx)}
 .act-btn:hover{color:var(--t2);background:var(--surface);border-color:var(--border);box-shadow:var(--s-sm)}
 .act-btn.pinned-active{color:var(--amber);border-color:rgba(217,119,6,.3);background:var(--amber-l)}
+.act-btn.speaking{color:var(--blue);border-color:var(--blue-mid);background:var(--blue-light)}
+.act-btn.speaking svg{animation:ttsPulse 1.1s ease infinite}
+@keyframes ttsPulse{0%,100%{opacity:1}50%{opacity:.45}}
 .act-time{font-size:11px;color:transparent;transition:color .18s;margin-left:auto}
 .msg-row.ai:hover .act-time{color:var(--t4)}
 
@@ -1284,6 +1287,7 @@ function hideThinking() { clearInterval(stageTimer); document.getElementById('th
 async function sendMessage(text) {
   text = (text || $input.value).trim();
   if (!text || busy) return;
+  stopSpeak();                       // don't read over a new turn
   document.getElementById('welcomeScreen')?.remove();
   busy = true; setSendState(true); histIdx = -1;
   $input.value = ''; autoResize($input);
@@ -1459,6 +1463,10 @@ function buildActions(el, m, row) {
     <button class="act-btn${isPinned?' pinned-active':''}" id="pin${m.ts}" onclick="togglePin(${m.ts})" aria-label="${isPinned?'Unpin':'Pin'} response">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
       ${isPinned ? 'Pinned' : 'Pin'}
+    </button>
+    <button class="act-btn" id="tts${m.ts}" onclick="toggleSpeak(${m.ts})" aria-label="Read answer aloud">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+      <span class="tts-label">Listen</span>
     </button>
     <div style="width:1px;height:16px;background:var(--border);margin:0 2px" aria-hidden="true"></div>
     <button class="fb-btn" id="fbu${m.ts}" onclick="feedback(${m.ts},'up',this)" aria-label="Helpful">
@@ -1845,6 +1853,64 @@ function saveResp(btn) {
   a.href = URL.createObjectURL(new Blob([body.innerText], { type:'text/plain' }));
   a.download = `roche-scientific-${Date.now()}.txt`; a.click();
   toast('💾 Response saved', 'green');
+}
+
+/* ─── VOICE OUTPUT (read aloud) ──────────────────────────────────
+   Uses the browser's built-in SpeechSynthesis — no backend, works
+   offline, and reads German/French/Italian answers in the right voice.
+   Pairs with the mic (voice input) for hands-free use at the bench. */
+let speakingTs = null;
+const TTS_LANG = { english:'en-US', german:'de-DE', french:'fr-FR', italian:'it-IT', spanish:'es-ES' };
+
+function ttsStrip(s) {
+  // Speak the prose, not the markup: drop code, turn links into their text,
+  // and strip the remaining markdown punctuation.
+  return String(s || '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[*_#>~|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function _ttsLabel(ts, text) {
+  const el = document.querySelector('#tts' + ts + ' .tts-label');
+  if (el) el.textContent = text;
+}
+
+function stopSpeak() {
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  if (speakingTs != null) {
+    document.getElementById('tts' + speakingTs)?.classList.remove('speaking');
+    _ttsLabel(speakingTs, 'Listen');
+  }
+  speakingTs = null;
+}
+
+function toggleSpeak(ts) {
+  if (!('speechSynthesis' in window)) {
+    toast('Read-aloud is not supported in this browser.', 'amber');
+    return;
+  }
+  const wasSpeaking = speakingTs === ts;
+  stopSpeak();                       // stop anything playing (and toggle off if same)
+  if (wasSpeaking) return;
+
+  const m = messages.find(x => x.ts === ts);
+  const text = ttsStrip(m?.content);
+  if (!text) return;
+
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = TTS_LANG[m.language] || 'en-US';
+  u.onend = () => { if (speakingTs === ts) stopSpeak(); };
+  u.onerror = () => { if (speakingTs === ts) stopSpeak(); };
+
+  speakingTs = ts;
+  document.getElementById('tts' + ts)?.classList.add('speaking');
+  _ttsLabel(ts, 'Stop');
+  window.speechSynthesis.speak(u);
 }
 
 /* ─── FILE / VOICE ───────────────────────────────────────────── */
