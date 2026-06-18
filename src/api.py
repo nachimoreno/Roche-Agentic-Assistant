@@ -145,6 +145,18 @@ def index():
     return FileResponse(str(_static / "index.html"))
 
 
+@app.get("/sw.js", include_in_schema=False)
+def service_worker():
+    # Served from the root so its scope covers the whole app (a worker under
+    # /static/ could only control /static/). `no-cache` lets the browser detect
+    # an updated worker on every load.
+    return FileResponse(
+        str(_static / "sw.js"),
+        media_type="application/javascript",
+        headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"},
+    )
+
+
 # ---------------------------------------------------------------------------
 # Request / response schemas
 # ---------------------------------------------------------------------------

@@ -6,6 +6,11 @@
 <title>Roche Scientific AI</title>
 <meta name="application-name" content="Roche Scientific AI">
 <meta name="theme-color" content="#0B41CD">
+<!-- iPad / iOS add-to-home-screen: launch full-screen as a standalone app -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Roche AI">
 <link rel="manifest" href="/static/manifest.webmanifest">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/static/icon-192.png">
@@ -2153,6 +2158,14 @@ function relTime(ts) {
 }
 
 init();
+
+/* Register the service worker for installability + offline app shell.
+   Served from /sw.js (root scope) so it can control the whole app. */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
 </script>
 </body>
 </html>

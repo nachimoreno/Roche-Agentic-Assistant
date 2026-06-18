@@ -290,6 +290,15 @@ def test_index_serves_html(client):
     assert "text/html" in resp.headers["content-type"]
 
 
+def test_service_worker_served_at_root_scope(client):
+    # The SW must be reachable at /sw.js (root scope) with the header that lets
+    # it control the whole app, so the PWA can install + cache the shell.
+    resp = client.get("/sw.js")
+    assert resp.status_code == 200
+    assert "javascript" in resp.headers["content-type"]
+    assert resp.headers.get("service-worker-allowed") == "/"
+
+
 def test_dashboard_route_is_gone(client):
     # Regression guard: the broken /dashboard route was removed.
     assert client.get("/dashboard").status_code == 404
