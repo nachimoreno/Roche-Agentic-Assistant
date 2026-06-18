@@ -64,6 +64,7 @@ def _question_response() -> Response:
             section="Centrifuges",
             title="Cleaning Laboratory Devices",
         )],
+        follow_ups=["How often should I clean the rotor?"],
     )
 
 
@@ -215,6 +216,7 @@ def test_chat_returns_text_and_mapped_citations(client):
             "url": None,
         }
     ]
+    assert body["follow_ups"] == ["How often should I clean the rotor?"]
 
 
 def test_chat_surfaces_feedback_emotion(client):
@@ -333,11 +335,13 @@ class _StatusError(Exception):
 class FakeStreamingAssistant:
     """Yields canned stream events; or raises `error` mid-stream after meta."""
 
-    def __init__(self, tokens, citations, *, error: Exception | None = None, turn_id=None):
+    def __init__(self, tokens, citations, *, error: Exception | None = None,
+                 turn_id=None, follow_ups=None):
         self._tokens = tokens
         self._citations = citations
         self._error = error
         self._turn_id = turn_id
+        self._follow_ups = follow_ups or []
         self.calls: list[tuple] = []
 
     def handle_stream(self, session_id, message, **kwargs):
@@ -353,6 +357,7 @@ class FakeStreamingAssistant:
             text="".join(self._tokens),
             citations=self._citations,
             turn_id=self._turn_id,
+            follow_ups=self._follow_ups,
         )
 
 
@@ -376,7 +381,9 @@ def test_stream_emits_meta_tokens_then_done(client):
     cites = [Citation(
         source="06_cleaning.md", section="Centrifuges", title="Cleaning Guide"
     )]
-    _inject(FakeStreamingAssistant(["Use ", "isopropyl."], cites))
+    _inject(FakeStreamingAssistant(
+        ["Use ", "isopropyl."], cites, follow_ups=["What about the lid?"]
+    ))
     sid = str(UUID(int=10))
 
     resp = client.post(f"/api/sessions/{sid}/chat/stream", json={"message": "how?"})
@@ -397,6 +404,7 @@ def test_stream_emits_meta_tokens_then_done(client):
     assert done["citations"] == [
         {"source": "06_cleaning.md", "section": "Centrifuges", "title": "Cleaning Guide", "url": None}
     ]
+    assert done["follow_ups"] == ["What about the lid?"]
 
 
 def test_stream_rejects_malformed_session_id(client):

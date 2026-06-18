@@ -17,7 +17,7 @@ continuity already works in this MVP.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterator, Optional, Union
 from uuid import UUID
 
@@ -49,6 +49,7 @@ class Response:
     analysis: AnalysisResult
     citations: list[Citation]
     turn_id: Optional[UUID] = None      # the assistant turn, for rating
+    follow_ups: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -76,6 +77,7 @@ class StreamDone:
     text: str
     citations: list[Citation]
     turn_id: Optional[UUID] = None      # the assistant turn, for rating
+    follow_ups: list[str] = field(default_factory=list)
 
 
 StreamEvent = Union[StreamMeta, StreamToken, StreamDone]
@@ -247,6 +249,7 @@ class Assistant:
             analysis=analysis,
             citations=answer.citations,
             turn_id=assistant_turn.id,
+            follow_ups=answer.follow_ups,
         )
 
     def handle_stream(
@@ -314,6 +317,7 @@ class Assistant:
 
         full_text = ""
         citations: list[Citation] = []
+        follow_ups: list[str] = []
         try:
             for piece in self._agent.answer_stream(
                 message=message,
@@ -326,6 +330,7 @@ class Assistant:
                 elif isinstance(piece, AnswerComplete):
                     full_text = piece.text
                     citations = piece.citations
+                    follow_ups = piece.follow_ups
         except GeneratorExit:
             # Client disconnected mid-stream (Stop button, closed tab). The
             # client persists the partial answer it kept on screen via
@@ -350,7 +355,10 @@ class Assistant:
             tenant_id=tenant_id,
         )
         yield StreamDone(
-            text=full_text, citations=citations, turn_id=assistant_turn.id
+            text=full_text,
+            citations=citations,
+            turn_id=assistant_turn.id,
+            follow_ups=follow_ups,
         )
 
     def record_rating(

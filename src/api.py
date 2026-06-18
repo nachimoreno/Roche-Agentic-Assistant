@@ -167,6 +167,7 @@ class ChatResponse(BaseModel):
     emotion: Optional[str] = None
     citations: list[CitationOut]
     turn_id: Optional[str] = None      # the assistant turn, for rating
+    follow_ups: list[str] = []         # suggested next questions (chips)
 
 
 class SessionItemOut(BaseModel):
@@ -532,6 +533,7 @@ def chat(
             for c in resp.citations
         ],
         turn_id=str(resp.turn_id) if resp.turn_id else None,
+        follow_ups=resp.follow_ups,
     )
 
 
@@ -593,6 +595,7 @@ def chat_stream(
                             for c in ev.citations
                         ],
                         "turn_id": str(ev.turn_id) if ev.turn_id else None,
+                        "follow_ups": ev.follow_ups,
                     })
         except Exception as exc:
             category, detail = _error_category(exc)

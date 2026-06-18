@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterator, Optional, Sequence, Union
 
 from pydantic import BaseModel, Field, field_validator
@@ -119,6 +119,13 @@ class Citation(BaseModel):
 class AnswerResult(BaseModel):
     text: str = Field(description="The answer to show the scientist.")
     citations: list[Citation] = Field(default_factory=list)
+    follow_ups: list[str] = Field(
+        default_factory=list,
+        description=(
+            "2-3 short follow-up questions the scientist might naturally ask "
+            "next, grounded in the same documentation."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -202,10 +209,13 @@ cite, copy the source="..." identifier into "source" and the section="..."
 value into "section" — never merge them, and never put the document="..."
 title into "source".
 
-Return ONLY a JSON object with two fields:
+Return ONLY a JSON object with three fields:
 - "text": your answer in {language}
 - "citations": a list of objects with "source" (the source="..." identifier)
   and "section" (the section heading), one for each context chunk you relied on.
+- "follow_ups": a list of 2-3 short follow-up questions, in {language}, that the
+  scientist might naturally ask next — each grounded in the same documentation
+  and phrased as a complete question. Use an empty list if none fit.
 """
 
 
@@ -222,9 +232,14 @@ Write your complete answer in {language} as plain prose (no JSON, no
 markdown code fences). When the answer is finished, output a line containing
 exactly:
 ---CITATIONS---
-and then a JSON array of objects with "source" (the source="..." identifier)
-and "section" (the section heading), one per context chunk you relied on (an
-empty array [] if you used none). Output nothing after the JSON array.
+and then a single JSON object with two fields:
+- "citations": a list of objects with "source" (the source="..." identifier)
+  and "section" (the section heading), one per context chunk you relied on (an
+  empty list [] if you used none).
+- "follow_ups": a list of 2-3 short follow-up questions, in {language}, that the
+  scientist might naturally ask next — each grounded in the same documentation
+  and phrased as a complete question (an empty list [] if none fit).
+Output nothing after the JSON object.
 """
 
 
@@ -251,6 +266,7 @@ class AnswerComplete:
 
     text: str
     citations: list[Citation]
+    follow_ups: list[str] = field(default_factory=list)
 
 
 StreamPiece = Union[TextDelta, AnswerComplete]
@@ -324,6 +340,7 @@ class RAGAgent:
         )
         result = AnswerResult.model_validate(payload)
         result.citations = _dedupe_citations(result.citations)
+        result.follow_ups = _clean_follow_ups(result.follow_ups)
         self._enrich_titles(result.citations)
         logger.info(
             "agent.answered",
@@ -331,6 +348,7 @@ class RAGAgent:
                 "language": language,
                 "chunks_used": len(chunks),
                 "citations": len(result.citations),
+                "follow_ups": len(result.follow_ups),
             },
         )
         return result
@@ -389,7 +407,8 @@ class RAGAgent:
             prose.append(tail)
             yield TextDelta(tail)
 
-        citations = _dedupe_citations(_parse_citations(splitter.citation_tail))
+        citations, follow_ups = _parse_tail(splitter.citation_tail)
+        citations = _dedupe_citations(citations)
         self._enrich_titles(citations)
         logger.info(
             "agent.streamed",
@@ -397,9 +416,12 @@ class RAGAgent:
                 "language": language,
                 "chunks_used": len(chunks),
                 "citations": len(citations),
+                "follow_ups": len(follow_ups),
             },
         )
-        yield AnswerComplete(text="".join(prose), citations=citations)
+        yield AnswerComplete(
+            text="".join(prose), citations=citations, follow_ups=follow_ups
+        )
 
     def _enrich_titles(self, citations: list[Citation]) -> None:
         """Populate each citation's display `title` and `url` from doc metadata.
@@ -495,6 +517,18 @@ def _dedupe_citations(citations: list[Citation]) -> list[Citation]:
     return out
 
 
+def _clean_follow_ups(items, limit: int = 3) -> list[str]:
+    """Normalise model-suggested follow-ups: strip, de-dup, cap at `limit`."""
+    out: list[str] = []
+    for f in items or []:
+        s = str(f).strip()
+        if s and s not in out:
+            out.append(s)
+        if len(out) >= limit:
+            break
+    return out
+
+
 def _parse_citations(tail: str) -> list[Citation]:
     tail = tail.strip()
     if not tail:
@@ -507,6 +541,32 @@ def _parse_citations(tail: str) -> list[Citation]:
             "agent.stream.citations_unparseable", extra={"tail": tail[:200]}
         )
         return []
+
+
+def _parse_tail(tail: str) -> tuple[list[Citation], list[str]]:
+    """Parse the streamed post-sentinel tail into citations and follow-ups.
+
+    The current contract is a JSON object {"citations": [...],
+    "follow_ups": [...]}, but a bare citations array (the previous format, or a
+    model that ignored the object instruction) is also accepted so a malformed
+    tail degrades to "citations only, no follow-ups" rather than losing both.
+    """
+    tail = tail.strip()
+    if not tail:
+        return [], []
+    try:
+        data = json.loads(tail)
+    except Exception:
+        logger.warning("agent.stream.tail_unparseable", extra={"tail": tail[:200]})
+        return [], []
+    try:
+        if isinstance(data, list):
+            return [Citation.model_validate(c) for c in data], []
+        citations = [Citation.model_validate(c) for c in data.get("citations", [])]
+        return citations, _clean_follow_ups(data.get("follow_ups", []))
+    except Exception:
+        logger.warning("agent.stream.tail_invalid", extra={"tail": tail[:200]})
+        return [], []
 
 
 def _retrieval_query(message: str, history: Sequence[Turn]) -> str:

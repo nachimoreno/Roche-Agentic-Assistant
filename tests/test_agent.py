@@ -19,10 +19,12 @@ from agent import (
     TextDelta,
     Turn,
     _clean_citation_value,
+    _clean_follow_ups,
     _decline_message,
     _format_context,
     _overlap,
     _parse_citations,
+    _parse_tail,
     _retrieval_query,
 )
 from retrieval import RetrievalResult
@@ -503,9 +505,78 @@ def test_stream_off_domain_declines_without_calling_llm():
     complete = next(p for p in pieces if isinstance(p, AnswerComplete))
     assert complete.text == _decline_message("english")
     assert complete.citations == []
+    assert complete.follow_ups == []
     # The decline prose was emitted as a delta; the canned LLM tokens were not.
     text = "".join(p.text for p in pieces if isinstance(p, TextDelta))
     assert text == _decline_message("english")
+
+
+# ---------------------------------------------------------------------------
+# Context-aware follow-up suggestions
+# ---------------------------------------------------------------------------
+
+def test_answer_returns_cleaned_follow_ups():
+    docs = FakeDocumentStore([_chunk("ctx", source_id="a.md")])
+    llm = RecordingLLM({
+        "text": "Here you go.",
+        "citations": [],
+        "follow_ups": [
+            "How do I cancel a booking?",
+            "  How do I cancel a booking?  ",     # duplicate after strip
+            "What if it's already reserved?",
+            "How far ahead can I book?",
+            "A fourth one beyond the cap",         # dropped — capped at 3
+        ],
+    })
+    agent = RAGAgent(document_store=docs, llm=llm)
+    result = agent.answer("how do I book?", language="english")
+    assert result.follow_ups == [
+        "How do I cancel a booking?",
+        "What if it's already reserved?",
+        "How far ahead can I book?",
+    ]
+
+
+def test_answer_stream_parses_follow_ups_from_object_tail():
+    deltas = [
+        "Use the portal.", "\n---CITATIONS---\n",
+        '{"citations": [{"source": "a.md", "section": "Booking"}], '
+        '"follow_ups": ["How do I cancel?", "Can I book two at once?"]}',
+    ]
+    docs = FakeDocumentStore([_chunk("ctx", source_id="a.md")],
+                             meta={"a.md": {"title": "Booking"}})
+    llm = StreamingLLM(deltas)
+    agent = RAGAgent(document_store=docs, llm=llm)
+
+    pieces = list(agent.answer_stream("how do I book?", language="english"))
+    complete = next(p for p in pieces if isinstance(p, AnswerComplete))
+    assert [c.source for c in complete.citations] == ["a.md"]
+    assert complete.follow_ups == ["How do I cancel?", "Can I book two at once?"]
+
+
+def test_off_domain_answer_has_no_follow_ups():
+    docs = FakeDocumentStore([_chunk("x")], max_dense=0.2, max_lexical=5.0)
+    llm = RecordingLLM({"text": "unused", "citations": [], "follow_ups": ["x"]})
+    agent = RAGAgent(document_store=docs, llm=llm)
+    result = agent.answer("bake a cake?", language="english")
+    assert result.follow_ups == []
+
+
+def test_clean_follow_ups_dedupes_strips_and_caps():
+    assert _clean_follow_ups(["a", " a ", "", "b", "c", "d"]) == ["a", "b", "c"]
+    assert _clean_follow_ups(None) == []
+
+
+def test_parse_tail_accepts_object_array_and_malformed():
+    cits, fups = _parse_tail(
+        '{"citations": [{"source":"a","section":"s"}], "follow_ups": ["q1"]}'
+    )
+    assert [c.source for c in cits] == ["a"] and fups == ["q1"]
+    # Bare array (legacy form / model ignored the object instruction).
+    cits, fups = _parse_tail('[{"source":"a","section":"s"}]')
+    assert [c.source for c in cits] == ["a"] and fups == []
+    # Garbage degrades to empty, no raise.
+    assert _parse_tail("not json at all") == ([], [])
 
 
 def test_answer_stream_enriches_citation_title_from_doc_metadata():
