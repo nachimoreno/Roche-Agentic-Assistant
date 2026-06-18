@@ -157,6 +157,7 @@ class CitationOut(BaseModel):
     source: str
     section: str
     title: Optional[str] = None        # human-readable doc title for display
+    url: Optional[str] = None          # click-through link to the source doc
 
 
 class ChatResponse(BaseModel):
@@ -527,7 +528,7 @@ def chat(
         type=resp.analysis.type,
         emotion=resp.analysis.emotion,
         citations=[
-            CitationOut(source=c.source, section=c.section, title=c.title)
+            CitationOut(source=c.source, section=c.section, title=c.title, url=c.url)
             for c in resp.citations
         ],
         turn_id=str(resp.turn_id) if resp.turn_id else None,
@@ -588,7 +589,7 @@ def chat_stream(
                 elif isinstance(ev, StreamDone):
                     yield _sse("done", {
                         "citations": [
-                            {"source": c.source, "section": c.section, "title": c.title}
+                            {"source": c.source, "section": c.section, "title": c.title, "url": c.url}
                             for c in ev.citations
                         ],
                         "turn_id": str(ev.turn_id) if ev.turn_id else None,

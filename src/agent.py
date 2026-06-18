@@ -18,10 +18,43 @@ from typing import Iterator, Optional, Sequence, Union
 from pydantic import BaseModel, Field, field_validator
 
 from llm import LLMClient
-from retrieval import DocumentStore
+from retrieval import DocumentStore, RetrievalResult
 
 
 logger = logging.getLogger(__name__)
+
+
+# Deterministic decline shown when a query is clearly off-domain (see
+# RAGAgent._off_domain). Localised for the four supported languages so the
+# guardrail can short-circuit without an LLM call yet still answer in the
+# scientist's language; anything else falls back to English.
+_DECLINE_MESSAGES = {
+    "english": (
+        "I don't have information on that in the lab documentation. For help, "
+        "check the Application Catalog or raise a request in ServiceNow."
+    ),
+    "german": (
+        "Dazu habe ich keine Informationen in der Labordokumentation. Für "
+        "Unterstützung sehen Sie im Application Catalog nach oder erstellen Sie "
+        "eine Anfrage in ServiceNow."
+    ),
+    "french": (
+        "Je n'ai pas d'information à ce sujet dans la documentation du "
+        "laboratoire. Pour obtenir de l'aide, consultez l'Application Catalog "
+        "ou créez une demande dans ServiceNow."
+    ),
+    "italian": (
+        "Non ho informazioni in merito nella documentazione di laboratorio. "
+        "Per assistenza, consulta l'Application Catalog o crea una richiesta in "
+        "ServiceNow."
+    ),
+}
+
+
+def _decline_message(language: str) -> str:
+    return _DECLINE_MESSAGES.get(
+        language.strip().lower(), _DECLINE_MESSAGES["english"]
+    )
 
 # Sentinel the streaming model emits between its prose answer and the JSON
 # citations block. Kept on its own line so it is easy to split on.
@@ -68,6 +101,13 @@ class Citation(BaseModel):
     # when no title is known.
     title: Optional[str] = Field(
         default=None, description="Human-readable title for display (server-set)."
+    )
+    # Deep link to the source document, enriched server-side from `source`'s
+    # metadata (e.g. a Google Drive webViewLink). None when the source has no
+    # URL (local markdown), in which case the UI renders the citation as plain
+    # text rather than a link.
+    url: Optional[str] = Field(
+        default=None, description="Link to the source document (server-set)."
     )
 
     @field_validator("source", "section", mode="before")
@@ -224,11 +264,31 @@ class RAGAgent:
         *,
         top_k: int = 4,
         max_tokens: int = 1024,
+        min_dense: float = 0.40,
+        min_lexical: float = 11.0,
     ) -> None:
         self._docs = document_store
         self._llm = llm
         self._top_k = top_k
         self._max_tokens = max_tokens
+        # Off-domain guardrail thresholds. A query is declined deterministically
+        # (no LLM call, no citations) only when BOTH retrievers are weak — dense
+        # cosine alone overlaps in/out of corpus, so both signals are required
+        # to avoid wrongly rejecting real questions. See `_off_domain`.
+        self._min_dense = min_dense
+        self._min_lexical = min_lexical
+
+    def _off_domain(self, retrieval: RetrievalResult) -> bool:
+        """True when retrieval is too weak to answer — clearly off-domain.
+
+        Requires the top dense cosine AND the top BM25 score to both fall below
+        their thresholds. In dense-only mode `max_lexical` is 0.0, so the gate
+        reduces to the dense check alone.
+        """
+        return (
+            retrieval.max_dense < self._min_dense
+            and retrieval.max_lexical < self._min_lexical
+        )
 
     def answer(
         self,
@@ -236,9 +296,21 @@ class RAGAgent:
         language: str,
         history: Sequence[Turn] = (),
     ) -> AnswerResult:
-        chunks = self._docs.retrieve(
+        retrieval = self._docs.retrieve_scored(
             _retrieval_query(message, history), k=self._top_k
         )
+        if self._off_domain(retrieval):
+            logger.info(
+                "agent.declined_off_domain",
+                extra={
+                    "language": language,
+                    "max_dense": round(retrieval.max_dense, 3),
+                    "max_lexical": round(retrieval.max_lexical, 2),
+                },
+            )
+            return AnswerResult(text=_decline_message(language), citations=[])
+
+        chunks = retrieval.chunks
         context = _format_context(chunks)
         system = _SYSTEM_PROMPT_TEMPLATE.format(language=language, context=context)
 
@@ -251,6 +323,7 @@ class RAGAgent:
             max_tokens=self._max_tokens,
         )
         result = AnswerResult.model_validate(payload)
+        result.citations = _dedupe_citations(result.citations)
         self._enrich_titles(result.citations)
         logger.info(
             "agent.answered",
@@ -275,9 +348,24 @@ class RAGAgent:
         the post-delimiter JSON tail. The `---CITATIONS---` sentinel and the
         JSON after it are never leaked to the caller as prose.
         """
-        chunks = self._docs.retrieve(
+        retrieval = self._docs.retrieve_scored(
             _retrieval_query(message, history), k=self._top_k
         )
+        if self._off_domain(retrieval):
+            logger.info(
+                "agent.declined_off_domain",
+                extra={
+                    "language": language,
+                    "max_dense": round(retrieval.max_dense, 3),
+                    "max_lexical": round(retrieval.max_lexical, 2),
+                },
+            )
+            message_text = _decline_message(language)
+            yield TextDelta(message_text)
+            yield AnswerComplete(text=message_text, citations=[])
+            return
+
+        chunks = retrieval.chunks
         context = _format_context(chunks)
         system = _STREAM_SYSTEM_PROMPT_TEMPLATE.format(language=language, context=context)
 
@@ -301,7 +389,7 @@ class RAGAgent:
             prose.append(tail)
             yield TextDelta(tail)
 
-        citations = _parse_citations(splitter.citation_tail)
+        citations = _dedupe_citations(_parse_citations(splitter.citation_tail))
         self._enrich_titles(citations)
         logger.info(
             "agent.streamed",
@@ -314,13 +402,15 @@ class RAGAgent:
         yield AnswerComplete(text="".join(prose), citations=citations)
 
     def _enrich_titles(self, citations: list[Citation]) -> None:
-        """Populate each citation's display `title` from document metadata.
+        """Populate each citation's display `title` and `url` from doc metadata.
 
         `source` stays the source_id the model cited (attribution joins on it);
-        `title` is the human-readable name shown in the UI. We look it up
-        authoritatively from the store rather than trusting any title the model
-        emitted, and leave it ``None`` when the id is unknown so the UI can fall
-        back to `source`. No-op if the store can't resolve metadata.
+        `title` is the human-readable name shown in the UI and `url` is the
+        click-through link to the source document. We look both up
+        authoritatively from the store rather than trusting anything the model
+        emitted, and leave them ``None`` when unknown so the UI can fall back to
+        `source` and render plain text. No-op if the store can't resolve
+        metadata.
         """
         lookup = getattr(self._docs, "doc_metadata", None)
         if not callable(lookup):
@@ -328,6 +418,7 @@ class RAGAgent:
         for c in citations:
             meta = lookup(c.source) or {}
             c.title = meta.get("title")
+            c.url = meta.get("url") or None
 
 
 def _overlap(text: str, sentinel: str) -> int:
@@ -381,6 +472,27 @@ class _ProseSplitter:
     @property
     def citation_tail(self) -> str:
         return self._tail
+
+
+def _dedupe_citations(citations: list[Citation]) -> list[Citation]:
+    """Collapse citations to one row per source document, preserving order.
+
+    The model routinely cites several chunks of the same document — sometimes
+    the same section, sometimes different sections — but every chunk of a
+    document resolves to the same title and the same click-through URL, so
+    listing them separately is pure redundancy to the scientist. We keep the
+    first citation per `source` (retaining its section as a representative
+    location) so the list shows each document once and citation numbering stays
+    stable.
+    """
+    seen: set[str] = set()
+    out: list[Citation] = []
+    for c in citations:
+        if c.source in seen:
+            continue
+        seen.add(c.source)
+        out.append(c)
+    return out
 
 
 def _parse_citations(tail: str) -> list[Citation]:

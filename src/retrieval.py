@@ -55,6 +55,23 @@ class IngestReport:
 
 
 @dataclass
+class RetrievalResult:
+    """Retrieved chunks plus the raw top scores from each retriever.
+
+    `chunks` is the fused, ranked result (RRF scores in hybrid mode). The two
+    score fields expose the *un-fused* top signal from each retriever so a
+    caller can gauge confidence: `max_dense` is the best cosine similarity in
+    [0, 1] and `max_lexical` is the best BM25 score (0.0 in dense-only mode).
+    These are kept separate from the fused list because RRF scores reflect rank,
+    not relevance, and so make a poor confidence signal on their own.
+    """
+
+    chunks: list[Chunk]
+    max_dense: float
+    max_lexical: float
+
+
+@dataclass
 class _DocChunk:
     chunk_id: str
     text: str
@@ -102,6 +119,9 @@ class DocumentStore:
                 "process": doc.metadata.get("process"),
                 "department": doc.metadata.get("department"),
                 "title": doc.title,
+                # Deep link to the source (e.g. Drive webViewLink); used to make
+                # citations clickable. Empty/absent for sources without URLs.
+                "url": doc.metadata.get("url"),
             }
             content_hash = _hash(doc.content)
             entry = {
@@ -188,6 +208,15 @@ class DocumentStore:
     # ------------------------------------------------------------------
 
     def retrieve(self, query: str, k: int = 4) -> list[Chunk]:
+        return self.retrieve_scored(query, k=k).chunks
+
+    def retrieve_scored(self, query: str, k: int = 4) -> RetrievalResult:
+        """Retrieve `k` chunks plus the top score from each retriever.
+
+        Same ranking as `retrieve`, but also surfaces `max_dense` (best cosine
+        similarity) and `max_lexical` (best BM25 score) so a caller can gauge
+        retrieval confidence — e.g. to decline clearly off-domain queries.
+        """
         embedding = self._embedder.embed([query])[0]
 
         # Dense-only path (no lexical index configured).
@@ -197,7 +226,11 @@ class DocumentStore:
                 "retrieval.done",
                 extra={"mode": "dense", "k": k, "returned": len(chunks)},
             )
-            return chunks
+            return RetrievalResult(
+                chunks=chunks,
+                max_dense=chunks[0].score if chunks else 0.0,
+                max_lexical=0.0,
+            )
 
         # Hybrid: blend a wider dense + BM25 candidate pool with RRF.
         pool = max(k, _HYBRID_POOL)
@@ -214,7 +247,11 @@ class DocumentStore:
                 "returned": len(fused),
             },
         )
-        return fused
+        return RetrievalResult(
+            chunks=fused,
+            max_dense=dense[0].score if dense else 0.0,
+            max_lexical=lexical[0].score if lexical else 0.0,
+        )
 
     # ------------------------------------------------------------------
     # Manifest helpers

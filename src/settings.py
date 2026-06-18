@@ -39,6 +39,14 @@ class Settings(BaseSettings):
     # "hybrid" fuses dense embeddings with BM25 keyword search (better on exact
     # tokens — codes, part numbers, app names). "dense" uses embeddings only.
     retrieval_mode: Literal["dense", "hybrid"] = "hybrid"
+    # Off-domain guardrail. A query is declined deterministically (no LLM call,
+    # no citations) only when the top dense cosine < retrieval_min_dense AND the
+    # top BM25 score < retrieval_min_lexical. Both signals are required because
+    # dense similarity alone overlaps in/out of corpus; defaults calibrated
+    # against the Roche Drive corpus. In dense-only mode the lexical check is
+    # inert (max lexical is 0.0), so only the dense threshold applies.
+    retrieval_min_dense: float = 0.40
+    retrieval_min_lexical: float = 11.0
 
     # ---- Document source ----------------------------------------------
     # Which DocumentSource to ingest from. "google_drive" (default) pulls from

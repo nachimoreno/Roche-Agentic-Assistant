@@ -212,6 +212,7 @@ def test_chat_returns_text_and_mapped_citations(client):
             "source": "06_cleaning_lab_devices.md",
             "section": "Centrifuges",
             "title": "Cleaning Laboratory Devices",
+            "url": None,
         }
     ]
 
@@ -394,7 +395,7 @@ def test_stream_emits_meta_tokens_then_done(client):
     assert text == "Use isopropyl."
     done = frames[-1][1]
     assert done["citations"] == [
-        {"source": "06_cleaning.md", "section": "Centrifuges", "title": "Cleaning Guide"}
+        {"source": "06_cleaning.md", "section": "Centrifuges", "title": "Cleaning Guide", "url": None}
     ]
 
 

@@ -10,7 +10,8 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/static/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700&family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
 <style>
 /* ── ROCHE SANS (brand typeface, self-hosted) ────────────────────
    Drop the licensed font files into src/static/fonts/ (see the README
@@ -45,7 +46,7 @@
   --s-xl:0 20px 60px rgba(15,25,35,.12),0 8px 24px rgba(15,25,35,.07);
   --r-sm:4px; --r:8px; --r-lg:12px; --r-xl:16px; --r-2xl:20px; --r-f:9999px;
   --tx:.18s cubic-bezier(.4,0,.2,1); --col:780px; --hdr:58px;
-  --font:'Roche Sans','Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  --font:'Roche Sans','Hanken Grotesk','Inter',-apple-system,BlinkMacSystemFont,sans-serif;
   --top-pad:102px;
 }
 
@@ -177,7 +178,8 @@ textarea,input{font-family:var(--font)}
 .sug-card:nth-child(5){animation-delay:.25s}.sug-card:nth-child(6){animation-delay:.30s}
 @keyframes cardIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .sug-card:hover{border-color:var(--blue);box-shadow:var(--s),0 0 0 3px var(--blue-mid);transform:translateY(-1px)}
-.sc-icon{font-size:18px;margin-bottom:2px}
+.sc-icon{display:flex;margin-bottom:6px;color:var(--blue)}
+.sc-icon svg{width:22px;height:22px}
 .sc-title{font-size:13px;font-weight:600;color:var(--t1)}
 .sc-desc{font-size:11.5px;color:var(--t4);line-height:1.4}
 
@@ -259,6 +261,9 @@ textarea,input{font-family:var(--font)}
 .cit-item{display:flex;gap:10px;align-items:flex-start}
 .cit-num{min-width:20px;height:20px;padding:0 5px;background:var(--blue-mid);color:var(--blue);border-radius:var(--r-sm);font-size:10.5px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px}
 .cit-source{font-size:12.5px;font-weight:600;color:var(--t2)}
+.cit-link{color:var(--blue);text-decoration:none;display:inline-flex;align-items:center;gap:4px;transition:all var(--tx)}
+.cit-link:hover{text-decoration:underline}
+.cit-link::after{content:"↗";font-size:10px;opacity:.6}
 .cit-sub{font-size:11.5px;color:var(--t4)}
 
 /* Response actions */
@@ -360,7 +365,8 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
 }
 .cmdpal-item:hover,.cmdpal-item.focused{background:var(--surface-2)}
 .cmdpal-item.focused{background:var(--blue-light);outline:none}
-.ci-icon{width:32px;height:32px;border-radius:var(--r-lg);background:var(--surface-2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.ci-icon{width:32px;height:32px;border-radius:var(--r-lg);background:var(--surface-2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;color:var(--t2)}
+.ci-icon svg{width:17px;height:17px}
 .ci-label{font-size:13.5px;font-weight:500;color:var(--t1)}
 .ci-desc{font-size:11.5px;color:var(--t4)}
 .ci-kbd{margin-left:auto;display:flex;gap:4px}
@@ -586,7 +592,7 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
     <div class="auth-brand">
       <svg class="roche-wordmark" viewBox="0 0 122 64" fill="none" aria-hidden="true">
         <polygon points="14,3 108,3 119,32 108,61 14,61 3,32" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/>
-        <text x="61" y="42" text-anchor="middle" font-size="27" font-weight="700" letter-spacing=".5" fill="currentColor" font-family="'Roche Sans',Inter,sans-serif">Roche</text>
+        <text x="61" y="42" text-anchor="middle" font-size="27" font-weight="700" letter-spacing=".5" fill="currentColor" font-family="'Roche Sans','Hanken Grotesk',Inter,sans-serif">Roche</text>
       </svg>
       <span class="auth-title">Scientific AI</span>
     </div>
@@ -644,7 +650,7 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
   <a href="/" class="hdr-logo" aria-label="Roche Scientific AI">
     <svg class="roche-wordmark" viewBox="0 0 122 64" fill="none" aria-hidden="true">
       <polygon points="14,3 108,3 119,32 108,61 14,61 3,32" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/>
-      <text x="61" y="42" text-anchor="middle" font-size="27" font-weight="700" letter-spacing=".5" fill="currentColor" font-family="'Roche Sans',Inter,sans-serif">Roche</text>
+      <text x="61" y="42" text-anchor="middle" font-size="27" font-weight="700" letter-spacing=".5" fill="currentColor" font-family="'Roche Sans','Hanken Grotesk',Inter,sans-serif">Roche</text>
     </svg>
     <span class="hdr-name">Scientific <em>AI</em></span>
   </a>
@@ -814,11 +820,11 @@ let streamCtrl = null; // AbortController for the in-flight stream (Stop button)
 /* Roche brand marks (inline SVG, drawn in currentColor) */
 const ROCHE_WORDMARK = `<svg class="roche-wordmark" viewBox="0 0 122 64" fill="none" aria-hidden="true">
   <polygon points="14,3 108,3 119,32 108,61 14,61 3,32" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/>
-  <text x="61" y="42" text-anchor="middle" font-size="27" font-weight="700" letter-spacing=".5" fill="currentColor" font-family="'Roche Sans',Inter,sans-serif">Roche</text>
+  <text x="61" y="42" text-anchor="middle" font-size="27" font-weight="700" letter-spacing=".5" fill="currentColor" font-family="'Roche Sans','Hanken Grotesk',Inter,sans-serif">Roche</text>
 </svg>`;
 const ROCHE_HEX_R = `<svg width="20" height="20" viewBox="0 0 64 64" fill="none" aria-hidden="true">
   <polygon points="15,5 49,5 61,32 49,59 15,59 3,32" stroke="currentColor" stroke-width="6" stroke-linejoin="round"/>
-  <text x="32" y="44" text-anchor="middle" font-size="30" font-weight="700" fill="currentColor" font-family="'Roche Sans',Inter,sans-serif">R</text>
+  <text x="32" y="44" text-anchor="middle" font-size="30" font-weight="700" fill="currentColor" font-family="'Roche Sans','Hanken Grotesk',Inter,sans-serif">R</text>
 </svg>`;
 
 const $msgs   = document.getElementById('messages');
@@ -1114,12 +1120,12 @@ function closeDrawer() {
 /* ─── WELCOME ────────────────────────────────────────────────── */
 function renderWelcome() {
   const items = [
-    { icon:'🔬', title:'Analyze a clinical study',  desc:'Upload or describe a study for detailed analysis',  q:'Can you analyze the methodology and key findings of a Phase III oncology clinical trial?' },
-    { icon:'🗺️', title:'Treatment landscape',        desc:'Comprehensive overview of available therapies',     q:'What is the current treatment landscape for HER2-positive metastatic breast cancer?' },
-    { icon:'📚', title:'Literature review',           desc:'Summarize the latest publications on a topic',      q:'Summarize the latest publications on CAR-T cell therapy in hematologic malignancies.' },
-    { icon:'⚖️', title:'Compare therapies',           desc:'Efficacy and safety side-by-side',                  q:'Compare the efficacy and safety of PD-1 versus PD-L1 inhibitors in NSCLC.' },
-    { icon:'⚗️', title:'Mechanism of action',         desc:'Molecular and cellular mechanisms',                 q:'Explain the mechanism of action of bispecific T-cell engagers in oncology.' },
-    { icon:'📋', title:'Evidence summary',            desc:'Evidence-based clinical summary',                   q:'What clinical evidence supports the use of bevacizumab in glioblastoma?' },
+    { icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 4.8 7 3.5c-.29 1.3-1.14 2.63-2.29 3.56S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05Z"/><path d="M12.56 6.6A11 11 0 0 0 14 3c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a7 7 0 0 1-11.9 5"/></svg>', title:'Clean lab equipment',   desc:'Cleaning and maintenance procedures',          q:'How do I clean the centrifuge rotor after each session?' },
+    { icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>', title:'Book an instrument',    desc:'Reserve lab equipment and devices',            q:'How do I book an instrument and check its availability?' },
+    { icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 17.4A2 2 0 0 0 2 18.8V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.2a2 2 0 0 0 1.4-.6l.8-.8a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>', title:'Request app access',    desc:'Onboarding and access requests',               q:'How do I request access to an internal application?' },
+    { icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>', title:'Report an incident',    desc:'Log an issue for the IT team',                 q:'How do I report an IT incident?' },
+    { icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>', title:'Check sample stock',    desc:'Inventory levels and locations',               q:'How do I check the current sample stock?' },
+    { icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z"/><path d="m9 12 2 2 4-4"/></svg>', title:'Decontamination',       desc:'Spill response and safe handling',             q:'What is the decontamination procedure after a sample spill?' },
   ];
   const hour = new Date().getHours();
   const greet = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
@@ -1129,7 +1135,7 @@ function renderWelcome() {
   wrap.innerHTML = `<div class="welcome">
     <div class="welcome-emblem" aria-hidden="true">${ROCHE_WORDMARK}</div>
     <h1>${greet}${first ? `, <em>${esc(first)}</em>` : ''}</h1>
-    <p class="welcome-sub">Your intelligent scientific partner. Ask about medical evidence, clinical studies, treatment landscapes, and research insights.</p>
+    <p class="welcome-sub">Your lab operations assistant. Ask about equipment cleaning, instrument booking, onboarding and access, sample stock, incident reporting, and decontamination — grounded in Roche documentation.</p>
     <div class="sug-grid" role="list">
       ${items.map(s=>`<button class="sug-card" role="listitem" onclick="sendMessage(${JSON.stringify(s.q)})" aria-label="${s.title}">
         <span class="sc-icon" aria-hidden="true">${s.icon}</span>
@@ -1546,7 +1552,9 @@ function citHTML(cits) {
           <div class="cit-item">
             <span class="cit-num">${i+1}</span>
             <div>
-              <div class="cit-source">${esc(c.title || c.source)}</div>
+              <div class="cit-source">${c.url
+                ? `<a href="${esc(c.url)}" target="_blank" rel="noopener noreferrer" class="cit-link">${esc(c.title || c.source)}</a>`
+                : esc(c.title || c.source)}</div>
               ${c.section?`<div class="cit-sub">${esc(c.section)}</div>`:''}
             </div>
           </div>`).join('')}
@@ -1694,12 +1702,13 @@ function exportConversation() {
 }
 
 /* ─── CMD+K ──────────────────────────────────────────────────── */
+const _CI = (p)=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
 const CMD_ITEMS = [
-  { icon:'➕', label:'New conversation',    desc:'Start a fresh session',         kbd:['⌘','N'], fn:() => { closeCmdK(); newConversation(); } },
-  { icon:'📥', label:'Export as Markdown',  desc:'Download conversation as .md',   kbd:['⌘','E'], fn:() => { closeCmdK(); exportConversation(); } },
-  { icon:'🌙', label:'Toggle dark mode',    desc:'Switch light / dark theme',      kbd:['⌘','D'], fn:() => { closeCmdK(); toggleDark(); } },
-  { icon:'🔍', label:'Search conversation', desc:'Find text in this session',      kbd:['⌘','F'], fn:() => { closeCmdK(); if(!document.getElementById('searchBar').classList.contains('open')) toggleSearch(); } },
-  { icon:'📌', label:'View pinned responses',desc:'Show pinned messages',          kbd:[],        fn:() => { closeCmdK(); if(pinned.length) { document.getElementById('pinnedStrip').classList.add('open'); updateTopPad(); } } },
+  { icon:_CI('<path d="M12 5v14"/><path d="M5 12h14"/>'), label:'New conversation',    desc:'Start a fresh session',         kbd:['⌘','N'], fn:() => { closeCmdK(); newConversation(); } },
+  { icon:_CI('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>'), label:'Export as Markdown',  desc:'Download conversation as .md',   kbd:['⌘','E'], fn:() => { closeCmdK(); exportConversation(); } },
+  { icon:_CI('<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>'), label:'Toggle dark mode',    desc:'Switch light / dark theme',      kbd:['⌘','D'], fn:() => { closeCmdK(); toggleDark(); } },
+  { icon:_CI('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>'), label:'Search conversation', desc:'Find text in this session',      kbd:['⌘','F'], fn:() => { closeCmdK(); if(!document.getElementById('searchBar').classList.contains('open')) toggleSearch(); } },
+  { icon:_CI('<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1Z"/>'), label:'View pinned responses',desc:'Show pinned messages',          kbd:[],        fn:() => { closeCmdK(); if(pinned.length) { document.getElementById('pinnedStrip').classList.add('open'); updateTopPad(); } } },
 ];
 
 let cmdFocusIdx = -1;

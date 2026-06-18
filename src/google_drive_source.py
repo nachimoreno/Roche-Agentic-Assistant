@@ -155,6 +155,9 @@ class GoogleDriveSource:
                     "source":        "google_drive",
                     "folder_id":     self.folder_id,
                     "subfolder":     meta.get("subfolder", ""),
+                    # Deep link back to the file in Drive, so the UI can turn a
+                    # citation into a click-through to the source document.
+                    "url":           meta.get("webViewLink", ""),
                 },
             )
 
@@ -221,7 +224,7 @@ class GoogleDriveSource:
         while True:
             resp = service.files().list(
                 q=f"'{folder_id}' in parents and trashed=false",
-                fields="nextPageToken, files(id, name, mimeType, modifiedTime)",
+                fields="nextPageToken, files(id, name, mimeType, modifiedTime, webViewLink)",
                 pageToken=page_token,
                 pageSize=100,
                 supportsAllDrives=True,
