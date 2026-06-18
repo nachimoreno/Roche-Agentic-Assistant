@@ -124,6 +124,16 @@ async def lifespan(app: FastAPI):
             "in .env (a single valid key) and restart the server."
         )
         raise
+
+    # Print a clean, clickable link when the app is ready. uvicorn logs the
+    # bind address (0.0.0.0), which isn't a URL you can open — show localhost.
+    shown_host = (
+        "localhost" if _settings.host in ("0.0.0.0", "127.0.0.1") else _settings.host
+    )
+    url = f"http://{shown_host}:{_settings.port}/"
+    bar = "-" * 56
+    print(f"\n{bar}\n  Roche Scientific AI is ready.\n"
+          f"  Open this link in your browser:  {url}\n{bar}\n", flush=True)
     yield
 
 
