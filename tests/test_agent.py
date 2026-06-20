@@ -19,12 +19,17 @@ from agent import (
     TextDelta,
     Turn,
     _clean_citation_value,
+    _clean_follow_ups,
+    _decline_message,
+    _is_capability_question,
     _format_context,
     _overlap,
     _parse_citations,
+    _parse_tail,
     _retrieval_query,
 )
 from capabilities import CAPABILITIES
+from retrieval import RetrievalResult
 from vector_store import Chunk
 
 
@@ -94,16 +99,29 @@ def test_format_context_joins_multiple_chunks_with_separator():
 # ---------------------------------------------------------------------------
 
 class FakeDocumentStore:
-    def __init__(self, chunks, meta=None):
+    def __init__(self, chunks, meta=None, max_dense=0.9, max_lexical=20.0):
         self._chunks = chunks
         # source_id -> {"title", "process", "department"}, mirroring the real
         # DocumentStore.doc_metadata used for citation title enrichment.
         self._meta = meta or {}
+        # Top retriever scores returned by retrieve_scored. Default high so the
+        # off-domain guardrail does not trip — tests that exercise the guardrail
+        # pass low values explicitly.
+        self._max_dense = max_dense
+        self._max_lexical = max_lexical
         self.calls: list[tuple] = []
 
     def retrieve(self, query, k=4):
         self.calls.append((query, k))
         return self._chunks
+
+    def retrieve_scored(self, query, k=4):
+        self.calls.append((query, k))
+        return RetrievalResult(
+            chunks=self._chunks,
+            max_dense=self._max_dense,
+            max_lexical=self._max_lexical,
+        )
 
     def doc_metadata(self, source_id):
         return self._meta.get(source_id)
@@ -415,6 +433,7 @@ def test_answer_enriches_citation_title_from_doc_metadata():
             "title": "Cleaning Laboratory Devices",
             "process": "equipment-cleaning",
             "department": "lab-operations",
+            "url": "https://drive.google.com/file/d/clean-001/view",
         }},
     )
     llm = RecordingLLM({
@@ -427,6 +446,213 @@ def test_answer_enriches_citation_title_from_doc_metadata():
     c = result.citations[0]
     assert c.source == "clean-001"                       # id kept for attribution
     assert c.title == "Cleaning Laboratory Devices"      # human title for display
+    assert c.url == "https://drive.google.com/file/d/clean-001/view"  # click-through link
+
+
+def test_answer_dedupes_citations_to_one_row_per_document():
+    docs = FakeDocumentStore(
+        [_chunk("ctx", source_id="book-001")],
+        meta={"book-001": {"title": "Booking Laboratory Instruments"}},
+    )
+    # The model cites several chunks of the same document — different sections,
+    # but all resolving to the same title and click-through URL. They collapse
+    # to one row; a genuinely different document stays.
+    llm = RecordingLLM({
+        "text": "Use the booking portal.",
+        "citations": [
+            {"source": "book-001", "section": "Finding an Instrument"},
+            {"source": "book-001", "section": "Making a Reservation"},
+            {"source": "incident-001", "section": "How to report"},
+        ],
+    })
+    agent = RAGAgent(document_store=docs, llm=llm)
+
+    result = agent.answer("how do I book?", language="english")
+    sources = [c.source for c in result.citations]
+    assert sources == ["book-001", "incident-001"]      # one row per document
+    # First occurrence wins, so the representative section is kept.
+    assert result.citations[0].section == "Finding an Instrument"
+
+
+# ---------------------------------------------------------------------------
+# Off-domain guardrail — decline deterministically when retrieval is too weak
+# ---------------------------------------------------------------------------
+
+def test_off_domain_query_declines_without_calling_llm():
+    # Both retrievers weak → declined before the LLM is ever invoked.
+    docs = FakeDocumentStore([_chunk("irrelevant")], max_dense=0.20, max_lexical=5.0)
+    llm = RecordingLLM({"text": "should not be used", "citations": []})
+    agent = RAGAgent(document_store=docs, llm=llm)
+
+    result = agent.answer("how do I bake a cake?", language="english")
+    assert result.text == _decline_message("english")
+    assert result.citations == []
+    assert llm.last == {}                                # LLM was never called
+
+
+def test_strong_dense_prevents_decline_even_with_weak_lexical():
+    # A real question the embedder matches (dense above threshold) is answered
+    # even if BM25 is weak — both signals must be low to decline.
+    docs = FakeDocumentStore([_chunk("ctx", source_id="a.md")],
+                             max_dense=0.50, max_lexical=5.0)
+    llm = RecordingLLM({"text": "Here you go.", "citations": []})
+    agent = RAGAgent(document_store=docs, llm=llm)
+
+    result = agent.answer("a real question", language="english")
+    assert result.text == "Here you go."
+    assert llm.last != {}                                # LLM was called
+
+
+def test_strong_lexical_prevents_decline_even_with_weak_dense():
+    # An exact-keyword hit (BM25 above threshold) is answered even if the
+    # embedder scores it low — protects part numbers / SOP codes.
+    docs = FakeDocumentStore([_chunk("ctx", source_id="a.md")],
+                             max_dense=0.20, max_lexical=15.0)
+    llm = RecordingLLM({"text": "Here you go.", "citations": []})
+    agent = RAGAgent(document_store=docs, llm=llm)
+
+    result = agent.answer("SOP-12345", language="english")
+    assert result.text == "Here you go."
+    assert llm.last != {}                                # LLM was called
+
+
+def test_decline_message_is_localized_with_english_fallback():
+    assert "Labordokumentation" in _decline_message("german")
+    assert "laboratoire" in _decline_message("french")
+    assert "laboratorio" in _decline_message("italian")
+    # Unsupported/unknown languages fall back to English.
+    assert _decline_message("spanish") == _decline_message("english")
+
+
+def test_stream_off_domain_declines_without_calling_llm():
+    docs = FakeDocumentStore([_chunk("irrelevant")], max_dense=0.20, max_lexical=5.0)
+    llm = StreamingLLM(["should ", "not ", "be ", "used"])
+    agent = RAGAgent(document_store=docs, llm=llm)
+
+    pieces = list(agent.answer_stream("what's the weather?", language="english"))
+    complete = next(p for p in pieces if isinstance(p, AnswerComplete))
+    assert complete.text == _decline_message("english")
+    assert complete.citations == []
+    assert complete.follow_ups == []
+    # The decline prose was emitted as a delta; the canned LLM tokens were not.
+    text = "".join(p.text for p in pieces if isinstance(p, TextDelta))
+    assert text == _decline_message("english")
+
+
+# ---------------------------------------------------------------------------
+# Capability questions bypass the off-domain guardrail
+#
+# A self-question ("what can you do?") has no match in the lab corpus, so both
+# retrievers score low and the guardrail would wrongly decline it. The agent
+# must instead reach the LLM, which answers from the injected capabilities
+# block. Without this exemption the self-knowledge feature is silently broken.
+# ---------------------------------------------------------------------------
+
+def test_capability_question_bypasses_off_domain_decline():
+    # Weak retrieval (would normally decline) BUT it's a capability question →
+    # the LLM is still called and the capabilities block is injected.
+    docs = FakeDocumentStore([_chunk("irrelevant")], max_dense=0.10, max_lexical=2.0)
+    llm = RecordingLLM({"text": "I can help with lab operations.", "citations": []})
+    agent = RAGAgent(document_store=docs, llm=llm)
+
+    result = agent.answer("what can you do?", language="english")
+    assert result.text == "I can help with lab operations."   # not the decline
+    assert result.text != _decline_message("english")
+    assert llm.last != {}                                      # LLM WAS called
+    assert CAPABILITIES.as_prompt_block() in llm.last["system"]
+
+
+def test_stream_capability_question_bypasses_off_domain_decline():
+    docs = FakeDocumentStore([_chunk("irrelevant")], max_dense=0.10, max_lexical=2.0)
+    llm = StreamingLLM(["I help ", "with lab ops.", "\n---CITATIONS---\n", "[]"])
+    agent = RAGAgent(document_store=docs, llm=llm)
+
+    pieces = list(agent.answer_stream("who are you?", language="english"))
+    complete = next(p for p in pieces if isinstance(p, AnswerComplete))
+    assert complete.text == "I help with lab ops."             # not the decline
+    assert complete.text != _decline_message("english")
+    assert CAPABILITIES.as_prompt_block() in llm.last["system"]
+
+
+def test_is_capability_question_matches_supported_languages():
+    assert _is_capability_question("What can you do?")
+    assert _is_capability_question("who are you")
+    assert _is_capability_question("Tell me about your capabilities.")
+    assert _is_capability_question("Was kannst du?")           # German
+    assert _is_capability_question("Que peux-tu faire ?")      # French
+    assert _is_capability_question("Cosa puoi fare?")          # Italian
+    # Operational questions are NOT treated as capability questions.
+    assert not _is_capability_question("How do I clean the centrifuge?")
+    assert not _is_capability_question("How do I book an instrument?")
+    assert not _is_capability_question("")
+
+
+# ---------------------------------------------------------------------------
+# Context-aware follow-up suggestions
+# ---------------------------------------------------------------------------
+
+def test_answer_returns_cleaned_follow_ups():
+    docs = FakeDocumentStore([_chunk("ctx", source_id="a.md")])
+    llm = RecordingLLM({
+        "text": "Here you go.",
+        "citations": [],
+        "follow_ups": [
+            "How do I cancel a booking?",
+            "  How do I cancel a booking?  ",     # duplicate after strip
+            "What if it's already reserved?",
+            "How far ahead can I book?",
+            "A fourth one beyond the cap",         # dropped — capped at 3
+        ],
+    })
+    agent = RAGAgent(document_store=docs, llm=llm)
+    result = agent.answer("how do I book?", language="english")
+    assert result.follow_ups == [
+        "How do I cancel a booking?",
+        "What if it's already reserved?",
+        "How far ahead can I book?",
+    ]
+
+
+def test_answer_stream_parses_follow_ups_from_object_tail():
+    deltas = [
+        "Use the portal.", "\n---CITATIONS---\n",
+        '{"citations": [{"source": "a.md", "section": "Booking"}], '
+        '"follow_ups": ["How do I cancel?", "Can I book two at once?"]}',
+    ]
+    docs = FakeDocumentStore([_chunk("ctx", source_id="a.md")],
+                             meta={"a.md": {"title": "Booking"}})
+    llm = StreamingLLM(deltas)
+    agent = RAGAgent(document_store=docs, llm=llm)
+
+    pieces = list(agent.answer_stream("how do I book?", language="english"))
+    complete = next(p for p in pieces if isinstance(p, AnswerComplete))
+    assert [c.source for c in complete.citations] == ["a.md"]
+    assert complete.follow_ups == ["How do I cancel?", "Can I book two at once?"]
+
+
+def test_off_domain_answer_has_no_follow_ups():
+    docs = FakeDocumentStore([_chunk("x")], max_dense=0.2, max_lexical=5.0)
+    llm = RecordingLLM({"text": "unused", "citations": [], "follow_ups": ["x"]})
+    agent = RAGAgent(document_store=docs, llm=llm)
+    result = agent.answer("bake a cake?", language="english")
+    assert result.follow_ups == []
+
+
+def test_clean_follow_ups_dedupes_strips_and_caps():
+    assert _clean_follow_ups(["a", " a ", "", "b", "c", "d"]) == ["a", "b", "c"]
+    assert _clean_follow_ups(None) == []
+
+
+def test_parse_tail_accepts_object_array_and_malformed():
+    cits, fups = _parse_tail(
+        '{"citations": [{"source":"a","section":"s"}], "follow_ups": ["q1"]}'
+    )
+    assert [c.source for c in cits] == ["a"] and fups == ["q1"]
+    # Bare array (legacy form / model ignored the object instruction).
+    cits, fups = _parse_tail('[{"source":"a","section":"s"}]')
+    assert [c.source for c in cits] == ["a"] and fups == []
+    # Garbage degrades to empty, no raise.
+    assert _parse_tail("not json at all") == ([], [])
 
 
 def test_answer_stream_enriches_citation_title_from_doc_metadata():
@@ -463,3 +689,4 @@ def test_enrich_titles_leaves_title_none_for_unknown_source():
     result = agent.answer("q", language="english")
     assert result.citations[0].source == "unknown-001"
     assert result.citations[0].title is None
+    assert result.citations[0].url is None

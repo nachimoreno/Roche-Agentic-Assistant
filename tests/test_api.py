@@ -64,6 +64,7 @@ def _question_response() -> Response:
             section="Centrifuges",
             title="Cleaning Laboratory Devices",
         )],
+        follow_ups=["How often should I clean the rotor?"],
     )
 
 
@@ -212,8 +213,10 @@ def test_chat_returns_text_and_mapped_citations(client):
             "source": "06_cleaning_lab_devices.md",
             "section": "Centrifuges",
             "title": "Cleaning Laboratory Devices",
+            "url": None,
         }
     ]
+    assert body["follow_ups"] == ["How often should I clean the rotor?"]
 
 
 def test_chat_surfaces_feedback_emotion(client):
@@ -287,6 +290,15 @@ def test_index_serves_html(client):
     assert "text/html" in resp.headers["content-type"]
 
 
+def test_service_worker_served_at_root_scope(client):
+    # The SW must be reachable at /sw.js (root scope) with the header that lets
+    # it control the whole app, so the PWA can install + cache the shell.
+    resp = client.get("/sw.js")
+    assert resp.status_code == 200
+    assert "javascript" in resp.headers["content-type"]
+    assert resp.headers.get("service-worker-allowed") == "/"
+
+
 def test_dashboard_route_is_gone(client):
     # Regression guard: the broken /dashboard route was removed.
     assert client.get("/dashboard").status_code == 404
@@ -332,11 +344,13 @@ class _StatusError(Exception):
 class FakeStreamingAssistant:
     """Yields canned stream events; or raises `error` mid-stream after meta."""
 
-    def __init__(self, tokens, citations, *, error: Exception | None = None, turn_id=None):
+    def __init__(self, tokens, citations, *, error: Exception | None = None,
+                 turn_id=None, follow_ups=None):
         self._tokens = tokens
         self._citations = citations
         self._error = error
         self._turn_id = turn_id
+        self._follow_ups = follow_ups or []
         self.calls: list[tuple] = []
 
     def handle_stream(self, session_id, message, **kwargs):
@@ -352,6 +366,7 @@ class FakeStreamingAssistant:
             text="".join(self._tokens),
             citations=self._citations,
             turn_id=self._turn_id,
+            follow_ups=self._follow_ups,
         )
 
 
@@ -375,7 +390,9 @@ def test_stream_emits_meta_tokens_then_done(client):
     cites = [Citation(
         source="06_cleaning.md", section="Centrifuges", title="Cleaning Guide"
     )]
-    _inject(FakeStreamingAssistant(["Use ", "isopropyl."], cites))
+    _inject(FakeStreamingAssistant(
+        ["Use ", "isopropyl."], cites, follow_ups=["What about the lid?"]
+    ))
     sid = str(UUID(int=10))
 
     resp = client.post(f"/api/sessions/{sid}/chat/stream", json={"message": "how?"})
@@ -394,8 +411,9 @@ def test_stream_emits_meta_tokens_then_done(client):
     assert text == "Use isopropyl."
     done = frames[-1][1]
     assert done["citations"] == [
-        {"source": "06_cleaning.md", "section": "Centrifuges", "title": "Cleaning Guide"}
+        {"source": "06_cleaning.md", "section": "Centrifuges", "title": "Cleaning Guide", "url": None}
     ]
+    assert done["follow_ups"] == ["What about the lid?"]
 
 
 def test_stream_rejects_malformed_session_id(client):

@@ -39,6 +39,28 @@ class Settings(BaseSettings):
     # "hybrid" fuses dense embeddings with BM25 keyword search (better on exact
     # tokens — codes, part numbers, app names). "dense" uses embeddings only.
     retrieval_mode: Literal["dense", "hybrid"] = "hybrid"
+    # Off-domain guardrail. A query is declined deterministically (no LLM call,
+    # no citations) only when the top dense cosine < retrieval_min_dense AND the
+    # top BM25 score < retrieval_min_lexical.
+    #
+    # The two signals play different roles (see scripts/calibrate_guardrail.py,
+    # which produced these defaults against the lab-ops corpus):
+    #   * Dense cosine is the discriminator — it separates in/out of corpus with
+    #     a clean gap (measured: in-domain >= 0.51, off-domain <= 0.26), so 0.40
+    #     sits safely in the middle.
+    #   * BM25 is a poor off-domain signal (non-English in-domain queries score
+    #     ~0 against the English corpus; off-domain English queries pick up a few
+    #     points from common tokens, measured max ~4.7). Its only job is to
+    #     RESCUE a low-dense query with a strong exact-keyword hit (a part number
+    #     / SOP code), so 8.0 is a bar set a clear margin above that ~4.7 noise.
+    # Both must be below to decline, so dense effectively carries the gate and
+    # lexical only ever rescues. In dense-only mode max lexical is 0.0, so the
+    # lexical check is inert and only the dense threshold applies.
+    # NOTE: re-run the calibration script against the real Drive corpus before
+    # production — BM25 scores in particular scale with corpus size. Override
+    # either value via .env (RETRIEVAL_MIN_DENSE / RETRIEVAL_MIN_LEXICAL).
+    retrieval_min_dense: float = 0.40
+    retrieval_min_lexical: float = 8.0
 
     # ---- Document source ----------------------------------------------
     # Which DocumentSource to ingest from. "google_drive" (default) pulls from

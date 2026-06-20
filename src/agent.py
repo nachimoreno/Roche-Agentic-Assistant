@@ -12,17 +12,92 @@ from __future__ import annotations
 import json
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterator, Optional, Sequence, Union
 
 from pydantic import BaseModel, Field, field_validator
 
 from capabilities import CAPABILITIES
 from llm import LLMClient
-from retrieval import DocumentStore
+from retrieval import DocumentStore, RetrievalResult
 
 
 logger = logging.getLogger(__name__)
+
+
+# Deterministic decline shown when a query is clearly off-domain (see
+# RAGAgent._off_domain). Localised for the four supported languages so the
+# guardrail can short-circuit without an LLM call yet still answer in the
+# scientist's language; anything else falls back to English.
+_DECLINE_MESSAGES = {
+    "english": (
+        "I don't have information on that in the lab documentation. For help, "
+        "check the Application Catalog or raise a request in ServiceNow."
+    ),
+    "german": (
+        "Dazu habe ich keine Informationen in der Labordokumentation. Für "
+        "Unterstützung sehen Sie im Application Catalog nach oder erstellen Sie "
+        "eine Anfrage in ServiceNow."
+    ),
+    "french": (
+        "Je n'ai pas d'information à ce sujet dans la documentation du "
+        "laboratoire. Pour obtenir de l'aide, consultez l'Application Catalog "
+        "ou créez une demande dans ServiceNow."
+    ),
+    "italian": (
+        "Non ho informazioni in merito nella documentazione di laboratorio. "
+        "Per assistenza, consulta l'Application Catalog o crea una richiesta in "
+        "ServiceNow."
+    ),
+}
+
+
+def _decline_message(language: str) -> str:
+    return _DECLINE_MESSAGES.get(
+        language.strip().lower(), _DECLINE_MESSAGES["english"]
+    )
+
+
+# Phrasings that signal a question about the assistant itself ("what can you
+# do?", "who are you?") rather than about lab operations. These are answered
+# from the injected capabilities block (see `_SYSTEM_PROMPT_HEAD` and
+# capabilities.py), NOT from retrieval — so they must bypass the off-domain
+# guardrail, which would otherwise decline them: a meta-question has no match in
+# the lab corpus and scores low on both retrievers. Matching is deliberately
+# lenient across the four supported languages; a false positive merely lets a
+# weak-retrieval query reach the LLM (harmless — the prompt still grounds
+# operational answers in context), while a false negative wrongly declines a
+# self-question, so we err toward matching.
+_CAPABILITY_PATTERNS = re.compile(
+    r"""
+      \bwhat\s+(can|are)\s+you\b              # what can you do / what are you
+    | \bwho\s+are\s+you\b
+    | \bwhat\s+do\s+you\s+do\b
+    | \bhow\s+(can|do)\s+you\s+help\b
+    | \bcan\s+you\s+help\s+me\s+with\b
+    | \byour\s+(capabilities|abilities|features|skills|functions)\b
+    | \bwas\s+kannst\s+du\b                    # German
+    | \bwer\s+bist\s+du\b
+    | \bdeine\s+(fähigkeiten|funktionen)\b
+    | \bque\s+(peux|pouvez)[-\s]?(?:tu|vous)\b  # French
+    | \bqui\s+(es[-\s]?tu|êtes[-\s]?vous)\b
+    | \b(tes|vos)\s+capacités\b
+    | \bcosa\s+(puoi|sai)\s+fare\b             # Italian
+    | \bchi\s+sei\b
+    | \ble\s+tue\s+(capacità|funzioni)\b
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def _is_capability_question(message: str) -> bool:
+    """True when the message asks about the assistant itself, not lab ops.
+
+    Used to exempt self-questions from the off-domain decline so they reach the
+    LLM, which answers them from the capabilities block. See `_CAPABILITY_PATTERNS`.
+    """
+    return bool(_CAPABILITY_PATTERNS.search(message or ""))
+
 
 # Sentinel the streaming model emits between its prose answer and the JSON
 # citations block. Kept on its own line so it is easy to split on.
@@ -70,6 +145,13 @@ class Citation(BaseModel):
     title: Optional[str] = Field(
         default=None, description="Human-readable title for display (server-set)."
     )
+    # Deep link to the source document, enriched server-side from `source`'s
+    # metadata (e.g. a Google Drive webViewLink). None when the source has no
+    # URL (local markdown), in which case the UI renders the citation as plain
+    # text rather than a link.
+    url: Optional[str] = Field(
+        default=None, description="Link to the source document (server-set)."
+    )
 
     @field_validator("source", "section", mode="before")
     @classmethod
@@ -80,6 +162,13 @@ class Citation(BaseModel):
 class AnswerResult(BaseModel):
     text: str = Field(description="The answer to show the scientist.")
     citations: list[Citation] = Field(default_factory=list)
+    follow_ups: list[str] = Field(
+        default_factory=list,
+        description=(
+            "2-3 short follow-up questions the scientist might naturally ask "
+            "next, grounded in the same documentation."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -156,10 +245,13 @@ cite, copy the source="..." identifier into "source" and the section="..."
 value into "section" — never merge them, and never put the document="..."
 title into "source".
 
-Return ONLY a JSON object with two fields:
+Return ONLY a JSON object with three fields:
 - "text": your answer in {language}
 - "citations": a list of objects with "source" (the source="..." identifier)
   and "section" (the section heading), one for each context chunk you relied on.
+- "follow_ups": a list of 2-3 short follow-up questions, in {language}, that the
+  scientist might naturally ask next — each grounded in the same documentation
+  and phrased as a complete question. Use an empty list if none fit.
 """
 
 
@@ -176,9 +268,14 @@ Write your complete answer in {language} as plain prose (no JSON, no
 markdown code fences). When the answer is finished, output a line containing
 exactly:
 ---CITATIONS---
-and then a JSON array of objects with "source" (the source="..." identifier)
-and "section" (the section heading), one per context chunk you relied on (an
-empty array [] if you used none). Output nothing after the JSON array.
+and then a single JSON object with two fields:
+- "citations": a list of objects with "source" (the source="..." identifier)
+  and "section" (the section heading), one per context chunk you relied on (an
+  empty list [] if you used none).
+- "follow_ups": a list of 2-3 short follow-up questions, in {language}, that the
+  scientist might naturally ask next — each grounded in the same documentation
+  and phrased as a complete question (an empty list [] if none fit).
+Output nothing after the JSON object.
 """
 
 
@@ -205,6 +302,7 @@ class AnswerComplete:
 
     text: str
     citations: list[Citation]
+    follow_ups: list[str] = field(default_factory=list)
 
 
 StreamPiece = Union[TextDelta, AnswerComplete]
@@ -218,11 +316,31 @@ class RAGAgent:
         *,
         top_k: int = 4,
         max_tokens: int = 1024,
+        min_dense: float = 0.40,
+        min_lexical: float = 8.0,
     ) -> None:
         self._docs = document_store
         self._llm = llm
         self._top_k = top_k
         self._max_tokens = max_tokens
+        # Off-domain guardrail thresholds. A query is declined deterministically
+        # (no LLM call, no citations) only when BOTH retrievers are weak — dense
+        # cosine alone overlaps in/out of corpus, so both signals are required
+        # to avoid wrongly rejecting real questions. See `_off_domain`.
+        self._min_dense = min_dense
+        self._min_lexical = min_lexical
+
+    def _off_domain(self, retrieval: RetrievalResult) -> bool:
+        """True when retrieval is too weak to answer — clearly off-domain.
+
+        Requires the top dense cosine AND the top BM25 score to both fall below
+        their thresholds. In dense-only mode `max_lexical` is 0.0, so the gate
+        reduces to the dense check alone.
+        """
+        return (
+            retrieval.max_dense < self._min_dense
+            and retrieval.max_lexical < self._min_lexical
+        )
 
     def answer(
         self,
@@ -230,9 +348,23 @@ class RAGAgent:
         language: str,
         history: Sequence[Turn] = (),
     ) -> AnswerResult:
-        chunks = self._docs.retrieve(
+        retrieval = self._docs.retrieve_scored(
             _retrieval_query(message, history), k=self._top_k
         )
+        # Capability/meta questions are answered from the injected capabilities
+        # block, not retrieval, so they bypass the off-domain decline.
+        if self._off_domain(retrieval) and not _is_capability_question(message):
+            logger.info(
+                "agent.declined_off_domain",
+                extra={
+                    "language": language,
+                    "max_dense": round(retrieval.max_dense, 3),
+                    "max_lexical": round(retrieval.max_lexical, 2),
+                },
+            )
+            return AnswerResult(text=_decline_message(language), citations=[])
+
+        chunks = retrieval.chunks
         context = _format_context(chunks)
         system = _SYSTEM_PROMPT_TEMPLATE.format(
             language=language,
@@ -249,6 +381,8 @@ class RAGAgent:
             max_tokens=self._max_tokens,
         )
         result = AnswerResult.model_validate(payload)
+        result.citations = _dedupe_citations(result.citations)
+        result.follow_ups = _clean_follow_ups(result.follow_ups)
         self._enrich_titles(result.citations)
         logger.info(
             "agent.answered",
@@ -256,6 +390,7 @@ class RAGAgent:
                 "language": language,
                 "chunks_used": len(chunks),
                 "citations": len(result.citations),
+                "follow_ups": len(result.follow_ups),
             },
         )
         return result
@@ -273,9 +408,26 @@ class RAGAgent:
         the post-delimiter JSON tail. The `---CITATIONS---` sentinel and the
         JSON after it are never leaked to the caller as prose.
         """
-        chunks = self._docs.retrieve(
+        retrieval = self._docs.retrieve_scored(
             _retrieval_query(message, history), k=self._top_k
         )
+        # Capability/meta questions are answered from the injected capabilities
+        # block, not retrieval, so they bypass the off-domain decline.
+        if self._off_domain(retrieval) and not _is_capability_question(message):
+            logger.info(
+                "agent.declined_off_domain",
+                extra={
+                    "language": language,
+                    "max_dense": round(retrieval.max_dense, 3),
+                    "max_lexical": round(retrieval.max_lexical, 2),
+                },
+            )
+            message_text = _decline_message(language)
+            yield TextDelta(message_text)
+            yield AnswerComplete(text=message_text, citations=[])
+            return
+
+        chunks = retrieval.chunks
         context = _format_context(chunks)
         system = _STREAM_SYSTEM_PROMPT_TEMPLATE.format(
             language=language,
@@ -303,7 +455,8 @@ class RAGAgent:
             prose.append(tail)
             yield TextDelta(tail)
 
-        citations = _parse_citations(splitter.citation_tail)
+        citations, follow_ups = _parse_tail(splitter.citation_tail)
+        citations = _dedupe_citations(citations)
         self._enrich_titles(citations)
         logger.info(
             "agent.streamed",
@@ -311,18 +464,23 @@ class RAGAgent:
                 "language": language,
                 "chunks_used": len(chunks),
                 "citations": len(citations),
+                "follow_ups": len(follow_ups),
             },
         )
-        yield AnswerComplete(text="".join(prose), citations=citations)
+        yield AnswerComplete(
+            text="".join(prose), citations=citations, follow_ups=follow_ups
+        )
 
     def _enrich_titles(self, citations: list[Citation]) -> None:
-        """Populate each citation's display `title` from document metadata.
+        """Populate each citation's display `title` and `url` from doc metadata.
 
         `source` stays the source_id the model cited (attribution joins on it);
-        `title` is the human-readable name shown in the UI. We look it up
-        authoritatively from the store rather than trusting any title the model
-        emitted, and leave it ``None`` when the id is unknown so the UI can fall
-        back to `source`. No-op if the store can't resolve metadata.
+        `title` is the human-readable name shown in the UI and `url` is the
+        click-through link to the source document. We look both up
+        authoritatively from the store rather than trusting anything the model
+        emitted, and leave them ``None`` when unknown so the UI can fall back to
+        `source` and render plain text. No-op if the store can't resolve
+        metadata.
         """
         lookup = getattr(self._docs, "doc_metadata", None)
         if not callable(lookup):
@@ -330,6 +488,7 @@ class RAGAgent:
         for c in citations:
             meta = lookup(c.source) or {}
             c.title = meta.get("title")
+            c.url = meta.get("url") or None
 
 
 def _overlap(text: str, sentinel: str) -> int:
@@ -385,6 +544,39 @@ class _ProseSplitter:
         return self._tail
 
 
+def _dedupe_citations(citations: list[Citation]) -> list[Citation]:
+    """Collapse citations to one row per source document, preserving order.
+
+    The model routinely cites several chunks of the same document — sometimes
+    the same section, sometimes different sections — but every chunk of a
+    document resolves to the same title and the same click-through URL, so
+    listing them separately is pure redundancy to the scientist. We keep the
+    first citation per `source` (retaining its section as a representative
+    location) so the list shows each document once and citation numbering stays
+    stable.
+    """
+    seen: set[str] = set()
+    out: list[Citation] = []
+    for c in citations:
+        if c.source in seen:
+            continue
+        seen.add(c.source)
+        out.append(c)
+    return out
+
+
+def _clean_follow_ups(items, limit: int = 3) -> list[str]:
+    """Normalise model-suggested follow-ups: strip, de-dup, cap at `limit`."""
+    out: list[str] = []
+    for f in items or []:
+        s = str(f).strip()
+        if s and s not in out:
+            out.append(s)
+        if len(out) >= limit:
+            break
+    return out
+
+
 def _parse_citations(tail: str) -> list[Citation]:
     tail = tail.strip()
     if not tail:
@@ -397,6 +589,32 @@ def _parse_citations(tail: str) -> list[Citation]:
             "agent.stream.citations_unparseable", extra={"tail": tail[:200]}
         )
         return []
+
+
+def _parse_tail(tail: str) -> tuple[list[Citation], list[str]]:
+    """Parse the streamed post-sentinel tail into citations and follow-ups.
+
+    The current contract is a JSON object {"citations": [...],
+    "follow_ups": [...]}, but a bare citations array (the previous format, or a
+    model that ignored the object instruction) is also accepted so a malformed
+    tail degrades to "citations only, no follow-ups" rather than losing both.
+    """
+    tail = tail.strip()
+    if not tail:
+        return [], []
+    try:
+        data = json.loads(tail)
+    except Exception:
+        logger.warning("agent.stream.tail_unparseable", extra={"tail": tail[:200]})
+        return [], []
+    try:
+        if isinstance(data, list):
+            return [Citation.model_validate(c) for c in data], []
+        citations = [Citation.model_validate(c) for c in data.get("citations", [])]
+        return citations, _clean_follow_ups(data.get("follow_ups", []))
+    except Exception:
+        logger.warning("agent.stream.tail_invalid", extra={"tail": tail[:200]})
+        return [], []
 
 
 def _retrieval_query(message: str, history: Sequence[Turn]) -> str:

@@ -131,7 +131,13 @@ def build_assistant(settings: Settings, engine: Optional[Engine] = None) -> Assi
     )
 
     cl = ConversationLayer(llm=llm)
-    agent = RAGAgent(document_store=docs, llm=llm, top_k=settings.top_k)
+    agent = RAGAgent(
+        document_store=docs,
+        llm=llm,
+        top_k=settings.top_k,
+        min_dense=settings.retrieval_min_dense,
+        min_lexical=settings.retrieval_min_lexical,
+    )
     session_repo = SessionRepository(engine)
     feedback_repo = FeedbackRepository(engine)
     attribution = AttributionResolver(docs)

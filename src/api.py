@@ -124,6 +124,16 @@ async def lifespan(app: FastAPI):
             "in .env (a single valid key) and restart the server."
         )
         raise
+
+    # Print a clean, clickable link when the app is ready. uvicorn logs the
+    # bind address (0.0.0.0), which isn't a URL you can open — show localhost.
+    shown_host = (
+        "localhost" if _settings.host in ("0.0.0.0", "127.0.0.1") else _settings.host
+    )
+    url = f"http://{shown_host}:{_settings.port}/"
+    bar = "-" * 56
+    print(f"\n{bar}\n  Roche Scientific AI is ready.\n"
+          f"  Open this link in your browser:  {url}\n{bar}\n", flush=True)
     yield
 
 
@@ -145,6 +155,18 @@ def index():
     return FileResponse(str(_static / "index.html"))
 
 
+@app.get("/sw.js", include_in_schema=False)
+def service_worker():
+    # Served from the root so its scope covers the whole app (a worker under
+    # /static/ could only control /static/). `no-cache` lets the browser detect
+    # an updated worker on every load.
+    return FileResponse(
+        str(_static / "sw.js"),
+        media_type="application/javascript",
+        headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"},
+    )
+
+
 # ---------------------------------------------------------------------------
 # Request / response schemas
 # ---------------------------------------------------------------------------
@@ -157,6 +179,7 @@ class CitationOut(BaseModel):
     source: str
     section: str
     title: Optional[str] = None        # human-readable doc title for display
+    url: Optional[str] = None          # click-through link to the source doc
 
 
 class ChatResponse(BaseModel):
@@ -166,6 +189,7 @@ class ChatResponse(BaseModel):
     emotion: Optional[str] = None
     citations: list[CitationOut]
     turn_id: Optional[str] = None      # the assistant turn, for rating
+    follow_ups: list[str] = []         # suggested next questions (chips)
 
 
 class SessionItemOut(BaseModel):
@@ -527,10 +551,11 @@ def chat(
         type=resp.analysis.type,
         emotion=resp.analysis.emotion,
         citations=[
-            CitationOut(source=c.source, section=c.section, title=c.title)
+            CitationOut(source=c.source, section=c.section, title=c.title, url=c.url)
             for c in resp.citations
         ],
         turn_id=str(resp.turn_id) if resp.turn_id else None,
+        follow_ups=resp.follow_ups,
     )
 
 
@@ -588,10 +613,11 @@ def chat_stream(
                 elif isinstance(ev, StreamDone):
                     yield _sse("done", {
                         "citations": [
-                            {"source": c.source, "section": c.section, "title": c.title}
+                            {"source": c.source, "section": c.section, "title": c.title, "url": c.url}
                             for c in ev.citations
                         ],
                         "turn_id": str(ev.turn_id) if ev.turn_id else None,
+                        "follow_ups": ev.follow_ups,
                     })
         except Exception as exc:
             category, detail = _error_category(exc)

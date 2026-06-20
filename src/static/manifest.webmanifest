@@ -1,7 +1,7 @@
 {
   "name": "Roche Scientific AI",
   "short_name": "Roche AI",
-  "description": "Roche scientific assistant — clinical evidence, studies, and research insights.",
+  "description": "Roche lab operations assistant — onboarding, instrument booking, cleaning, sample stock, and incident reporting, grounded in internal documentation.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
