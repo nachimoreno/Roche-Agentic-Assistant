@@ -99,14 +99,15 @@ def test_format_context_joins_multiple_chunks_with_separator():
 # ---------------------------------------------------------------------------
 
 class FakeDocumentStore:
-    def __init__(self, chunks, meta=None, max_dense=0.9, max_lexical=20.0):
+    def __init__(self, chunks, meta=None, max_dense=0.9, max_lexical=0.95):
         self._chunks = chunks
         # source_id -> {"title", "process", "department"}, mirroring the real
         # DocumentStore.doc_metadata used for citation title enrichment.
         self._meta = meta or {}
-        # Top retriever scores returned by retrieve_scored. Default high so the
-        # off-domain guardrail does not trip — tests that exercise the guardrail
-        # pass low values explicitly.
+        # Top retriever scores returned by retrieve_scored, both on a [0, 1]
+        # scale (dense cosine, normalised BM25). Default high so the off-domain
+        # guardrail does not trip — tests that exercise the guardrail pass low
+        # values explicitly.
         self._max_dense = max_dense
         self._max_lexical = max_lexical
         self.calls: list[tuple] = []
@@ -480,7 +481,7 @@ def test_answer_dedupes_citations_to_one_row_per_document():
 
 def test_off_domain_query_declines_without_calling_llm():
     # Both retrievers weak → declined before the LLM is ever invoked.
-    docs = FakeDocumentStore([_chunk("irrelevant")], max_dense=0.20, max_lexical=5.0)
+    docs = FakeDocumentStore([_chunk("irrelevant")], max_dense=0.20, max_lexical=0.30)
     llm = RecordingLLM({"text": "should not be used", "citations": []})
     agent = RAGAgent(document_store=docs, llm=llm)
 
@@ -494,7 +495,7 @@ def test_strong_dense_prevents_decline_even_with_weak_lexical():
     # A real question the embedder matches (dense above threshold) is answered
     # even if BM25 is weak — both signals must be low to decline.
     docs = FakeDocumentStore([_chunk("ctx", source_id="a.md")],
-                             max_dense=0.50, max_lexical=5.0)
+                             max_dense=0.50, max_lexical=0.30)
     llm = RecordingLLM({"text": "Here you go.", "citations": []})
     agent = RAGAgent(document_store=docs, llm=llm)
 
@@ -507,7 +508,7 @@ def test_strong_lexical_prevents_decline_even_with_weak_dense():
     # An exact-keyword hit (BM25 above threshold) is answered even if the
     # embedder scores it low — protects part numbers / SOP codes.
     docs = FakeDocumentStore([_chunk("ctx", source_id="a.md")],
-                             max_dense=0.20, max_lexical=15.0)
+                             max_dense=0.20, max_lexical=0.90)
     llm = RecordingLLM({"text": "Here you go.", "citations": []})
     agent = RAGAgent(document_store=docs, llm=llm)
 
@@ -525,7 +526,7 @@ def test_decline_message_is_localized_with_english_fallback():
 
 
 def test_stream_off_domain_declines_without_calling_llm():
-    docs = FakeDocumentStore([_chunk("irrelevant")], max_dense=0.20, max_lexical=5.0)
+    docs = FakeDocumentStore([_chunk("irrelevant")], max_dense=0.20, max_lexical=0.30)
     llm = StreamingLLM(["should ", "not ", "be ", "used"])
     agent = RAGAgent(document_store=docs, llm=llm)
 
@@ -551,7 +552,7 @@ def test_stream_off_domain_declines_without_calling_llm():
 def test_capability_question_bypasses_off_domain_decline():
     # Weak retrieval (would normally decline) BUT it's a capability question →
     # the LLM is still called and the capabilities block is injected.
-    docs = FakeDocumentStore([_chunk("irrelevant")], max_dense=0.10, max_lexical=2.0)
+    docs = FakeDocumentStore([_chunk("irrelevant")], max_dense=0.10, max_lexical=0.20)
     llm = RecordingLLM({"text": "I can help with lab operations.", "citations": []})
     agent = RAGAgent(document_store=docs, llm=llm)
 
@@ -563,7 +564,7 @@ def test_capability_question_bypasses_off_domain_decline():
 
 
 def test_stream_capability_question_bypasses_off_domain_decline():
-    docs = FakeDocumentStore([_chunk("irrelevant")], max_dense=0.10, max_lexical=2.0)
+    docs = FakeDocumentStore([_chunk("irrelevant")], max_dense=0.10, max_lexical=0.20)
     llm = StreamingLLM(["I help ", "with lab ops.", "\n---CITATIONS---\n", "[]"])
     agent = RAGAgent(document_store=docs, llm=llm)
 
@@ -631,7 +632,7 @@ def test_answer_stream_parses_follow_ups_from_object_tail():
 
 
 def test_off_domain_answer_has_no_follow_ups():
-    docs = FakeDocumentStore([_chunk("x")], max_dense=0.2, max_lexical=5.0)
+    docs = FakeDocumentStore([_chunk("x")], max_dense=0.2, max_lexical=0.30)
     llm = RecordingLLM({"text": "unused", "citations": [], "follow_ups": ["x"]})
     agent = RAGAgent(document_store=docs, llm=llm)
     result = agent.answer("bake a cake?", language="english")

@@ -317,25 +317,26 @@ class RAGAgent:
         top_k: int = 4,
         max_tokens: int = 1024,
         min_dense: float = 0.40,
-        min_lexical: float = 8.0,
+        min_lexical: float = 0.85,
     ) -> None:
         self._docs = document_store
         self._llm = llm
         self._top_k = top_k
         self._max_tokens = max_tokens
-        # Off-domain guardrail thresholds. A query is declined deterministically
-        # (no LLM call, no citations) only when BOTH retrievers are weak — dense
-        # cosine alone overlaps in/out of corpus, so both signals are required
-        # to avoid wrongly rejecting real questions. See `_off_domain`.
+        # Off-domain guardrail thresholds (both on a [0, 1] scale). A query is
+        # declined deterministically (no LLM call, no citations) only when BOTH
+        # retrievers are weak — dense cosine alone overlaps in/out of corpus, so
+        # both signals are required to avoid wrongly rejecting real questions.
+        # See `_off_domain` and settings.py for how these were calibrated.
         self._min_dense = min_dense
         self._min_lexical = min_lexical
 
     def _off_domain(self, retrieval: RetrievalResult) -> bool:
         """True when retrieval is too weak to answer — clearly off-domain.
 
-        Requires the top dense cosine AND the top BM25 score to both fall below
-        their thresholds. In dense-only mode `max_lexical` is 0.0, so the gate
-        reduces to the dense check alone.
+        Requires the top dense cosine AND the top normalised-BM25 score to both
+        fall below their thresholds. In dense-only mode `max_lexical` is 0.0, so
+        the gate reduces to the dense check alone.
         """
         return (
             retrieval.max_dense < self._min_dense

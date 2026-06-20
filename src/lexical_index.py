@@ -50,7 +50,16 @@ class BM25Index:
     """In-memory Okapi BM25 over a fixed chunk corpus.
 
     `index()` rebuilds the whole index (cheap for this corpus size); `search()`
-    returns the top-k chunks by BM25 score, dropping non-matches (score 0).
+    returns the top-k chunks dropping non-matches.
+
+    Returned ``Chunk.score`` is BM25 **normalised to [0, 1)** — the raw score
+    divided by the maximum achievable score for that query (see `search`). Raw
+    Okapi BM25 grows with corpus size (its idf term scales ~log(N)) and with
+    query length, which makes an absolute confidence threshold drift as the
+    corpus grows. Normalising cancels both — idf appears in the score and the
+    ceiling and divides out — yielding a corpus-stable "match completeness"
+    comparable to dense cosine. The transform is monotonic per query, so ranking
+    (and therefore RRF fusion) is unchanged.
     """
 
     def __init__(self, k1: float = _K1, b: float = _B) -> None:
@@ -87,6 +96,17 @@ class BM25Index:
         if not terms:
             return []
 
+        # Ceiling used to normalise scores into [0, 1): the score a hypothetical
+        # doc with every (in-vocabulary) query term saturated would earn. Per
+        # term, the score contribution idf·(freq·(k1+1))/denom is strictly below
+        # idf·(k1+1) (the length factor keeps denom > freq), so dividing by this
+        # sum yields a value in [0, 1). Summed over `terms` WITH duplicates to
+        # match the scoring loop below, keeping the ratio bounded. Out-of-vocab
+        # query terms have no idf and can never be matched, so they are excluded.
+        max_score = sum(self._idf[t] * (self._k1 + 1) for t in terms if t in self._idf)
+        if max_score <= 0.0:
+            return []   # no query term exists in the corpus → no lexical signal
+
         scored: list[tuple[float, int]] = []
         for i, tf in enumerate(self._tf):
             score = 0.0
@@ -105,5 +125,8 @@ class BM25Index:
         results: list[Chunk] = []
         for score, i in scored[:k]:
             c = self._chunks[i]
-            results.append(Chunk(id=c.id, text=c.text, metadata=dict(c.metadata), score=score))
+            results.append(Chunk(
+                id=c.id, text=c.text, metadata=dict(c.metadata),
+                score=score / max_score,        # normalised to [0, 1)
+            ))
         return results

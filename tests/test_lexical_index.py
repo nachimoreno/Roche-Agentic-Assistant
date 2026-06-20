@@ -34,6 +34,24 @@ def test_exact_token_match_ranks_first():
     assert hits[0].id == "waste"
 
 
+def test_scores_are_normalised_to_unit_interval():
+    # Returned scores are a corpus-stable [0, 1] "match completeness", not a raw
+    # BM25 magnitude (which would grow with corpus size). A doc covering both
+    # query terms scores higher than one covering only one; a near-complete hit
+    # approaches 1.0.
+    idx = BM25Index()
+    idx.index([
+        _chunk("full", "centrifuge cleaning procedure for the lab"),
+        _chunk("partial", "centrifuge maintenance log"),
+        _chunk("other", "badge access onboarding"),
+    ])
+    hits = idx.search("centrifuge cleaning", k=3)
+    assert all(0.0 < h.score <= 1.0 for h in hits)        # bounded unit interval
+    by_id = {h.id: h.score for h in hits}
+    assert "other" not in by_id                            # no shared terms → dropped
+    assert by_id["full"] > by_id["partial"]                # completeness rewarded
+
+
 def test_search_drops_non_matches():
     idx = BM25Index()
     idx.index([_chunk("a", "centrifuge cleaning procedure")])

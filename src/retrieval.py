@@ -60,10 +60,13 @@ class RetrievalResult:
 
     `chunks` is the fused, ranked result (RRF scores in hybrid mode). The two
     score fields expose the *un-fused* top signal from each retriever so a
-    caller can gauge confidence: `max_dense` is the best cosine similarity in
-    [0, 1] and `max_lexical` is the best BM25 score (0.0 in dense-only mode).
-    These are kept separate from the fused list because RRF scores reflect rank,
-    not relevance, and so make a poor confidence signal on their own.
+    caller can gauge confidence: both are in [0, 1] — `max_dense` is the best
+    cosine similarity, and `max_lexical` is the best normalised BM25 "match
+    completeness" (0.0 in dense-only mode, or when no query term is in the
+    corpus). Both are corpus-size stable, so thresholds over them don't drift as
+    the corpus grows. These are kept separate from the fused list because RRF
+    scores reflect rank, not relevance, and so make a poor confidence signal on
+    their own.
     """
 
     chunks: list[Chunk]

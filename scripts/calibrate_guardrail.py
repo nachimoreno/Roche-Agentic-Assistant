@@ -15,10 +15,12 @@ Run against the fixture corpus (offline, deterministic)::
 
     python scripts/calibrate_guardrail.py
 
-Re-run against the REAL Google Drive corpus before trusting production
-thresholds — pass --docs to point at a folder of markdown, or wire in the Drive
-source. Fixture scores are a reasonable starting point but BM25 in particular is
-corpus-size dependent, so the real corpus may shift ``min_lexical``.
+Both score signals are now corpus-size stable (dense cosine is inherently so;
+BM25 is normalised to [0, 1] in lexical_index.py, which cancels the idf/log(N)
+drift), so thresholds should hold as the corpus grows. Still worth re-running
+against the REAL Google Drive corpus to confirm the in/out separation holds on
+real content — pass --docs to point at a folder of markdown, or wire in the
+Drive source.
 """
 
 from __future__ import annotations
@@ -133,7 +135,9 @@ def _suggest(in_rows, out_rows) -> None:
     #    gap. Below that bar, dense alone decides.
     dense_gap = min(in_dense) > max(out_dense)
     sugg_dense = round((max(out_dense) + min(in_dense)) / 2, 2) if dense_gap else 0.40
-    sugg_lex = round(max(out_lex) + 3.0, 1)   # rescue bar: off-domain max + margin
+    # Rescue bar: a clear margin above the highest off-domain lexical score.
+    # max_lexical is normalised to [0, 1], so use a fractional margin and clamp.
+    sugg_lex = round(min(max(out_lex) + 0.10, 1.0), 2)
     if not dense_gap:
         print("!! WARNING: dense scores do NOT separate in/out cleanly on this "
               "corpus — inspect the table above before trusting min_dense.\n")
