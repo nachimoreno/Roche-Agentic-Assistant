@@ -608,6 +608,54 @@ def test_answer_retrieves_on_message_when_no_override():
     assert docs.calls[-1][0] == "clean the centrifuge"
 
 
+# ---------------------------------------------------------------------------
+# Low-confidence ("verify this") flag
+# ---------------------------------------------------------------------------
+
+def test_answer_flags_low_confidence_when_grounding_is_weak():
+    # Dense above the decline floor (0.40) but below the warn threshold (0.45):
+    # answered, but flagged for the user to verify.
+    docs = FakeDocumentStore([_chunk("ctx", source_id="a.md")],
+                             max_dense=0.42, max_lexical=20.0)
+    llm = RecordingLLM({"text": "Here you go.", "citations": []})
+    agent = RAGAgent(document_store=docs, llm=llm)
+
+    result = agent.answer("q", language="english")
+    assert result.low_confidence is True
+
+
+def test_answer_confident_when_match_is_strong():
+    docs = FakeDocumentStore([_chunk("ctx", source_id="a.md")],
+                             max_dense=0.70, max_lexical=20.0)
+    llm = RecordingLLM({"text": "Here you go.", "citations": []})
+    agent = RAGAgent(document_store=docs, llm=llm)
+
+    result = agent.answer("q", language="english")
+    assert result.low_confidence is False
+
+
+def test_declined_answer_is_not_flagged_low_confidence():
+    # Off-domain queries are declined outright, not flagged as a weak answer.
+    docs = FakeDocumentStore([_chunk("x")], max_dense=0.20, max_lexical=5.0)
+    llm = RecordingLLM({"text": "unused", "citations": []})
+    agent = RAGAgent(document_store=docs, llm=llm)
+
+    result = agent.answer("bake a cake?", language="english")
+    assert result.low_confidence is False
+
+
+def test_answer_stream_flags_low_confidence():
+    deltas = ["Here you go.", "\n---CITATIONS---\n", '{"citations": [], "follow_ups": []}']
+    docs = FakeDocumentStore([_chunk("ctx", source_id="a.md")],
+                             max_dense=0.42, max_lexical=20.0)
+    llm = StreamingLLM(deltas)
+    agent = RAGAgent(document_store=docs, llm=llm)
+
+    pieces = list(agent.answer_stream("q", language="english"))
+    complete = next(p for p in pieces if isinstance(p, AnswerComplete))
+    assert complete.low_confidence is True
+
+
 def test_answer_stream_enriches_citation_title_from_doc_metadata():
     deltas = [
         "Wipe it down.", "\n---CITATIONS---\n",

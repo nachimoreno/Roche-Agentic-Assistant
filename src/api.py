@@ -190,6 +190,7 @@ class ChatResponse(BaseModel):
     citations: list[CitationOut]
     turn_id: Optional[str] = None      # the assistant turn, for rating
     follow_ups: list[str] = []         # suggested next questions (chips)
+    low_confidence: bool = False       # weak grounding -> show a verify badge
 
 
 class SessionItemOut(BaseModel):
@@ -556,6 +557,7 @@ def chat(
         ],
         turn_id=str(resp.turn_id) if resp.turn_id else None,
         follow_ups=resp.follow_ups,
+        low_confidence=resp.low_confidence,
     )
 
 
@@ -618,6 +620,7 @@ def chat_stream(
                         ],
                         "turn_id": str(ev.turn_id) if ev.turn_id else None,
                         "follow_ups": ev.follow_ups,
+                        "low_confidence": ev.low_confidence,
                     })
         except Exception as exc:
             category, detail = _error_category(exc)

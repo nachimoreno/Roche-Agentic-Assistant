@@ -126,6 +126,9 @@ class AnswerResult(BaseModel):
             "next, grounded in the same documentation."
         ),
     )
+    # Set server-side (not by the model): True when retrieval was weak enough
+    # that the answer should carry a "verify this" caution badge.
+    low_confidence: bool = Field(default=False)
 
 
 # ---------------------------------------------------------------------------
@@ -267,6 +270,7 @@ class AnswerComplete:
     text: str
     citations: list[Citation]
     follow_ups: list[str] = field(default_factory=list)
+    low_confidence: bool = False
 
 
 StreamPiece = Union[TextDelta, AnswerComplete]
@@ -282,11 +286,15 @@ class RAGAgent:
         max_tokens: int = 1024,
         min_dense: float = 0.40,
         min_lexical: float = 11.0,
+        warn_dense: float = 0.45,
     ) -> None:
         self._docs = document_store
         self._llm = llm
         self._top_k = top_k
         self._max_tokens = max_tokens
+        # Top dense cosine below this (but above min_dense, so still answered)
+        # marks the answer low-confidence for a "verify this" UI badge.
+        self._warn_dense = warn_dense
         # Off-domain guardrail thresholds. A query is declined deterministically
         # (no LLM call, no citations) only when BOTH retrievers are weak — dense
         # cosine alone overlaps in/out of corpus, so both signals are required
@@ -305,6 +313,15 @@ class RAGAgent:
             retrieval.max_dense < self._min_dense
             and retrieval.max_lexical < self._min_lexical
         )
+
+    def _low_confidence(self, retrieval: RetrievalResult) -> bool:
+        """True when an answer is given but grounding is weak — flag to verify.
+
+        Only meaningful once `_off_domain` has passed (so the query cleared the
+        decline floor). The top retrieved chunk being only a moderate match
+        means the answer may be loosely grounded, so the UI shows a caution.
+        """
+        return retrieval.max_dense < self._warn_dense
 
     def answer(
         self,
@@ -345,6 +362,7 @@ class RAGAgent:
         result = AnswerResult.model_validate(payload)
         result.citations = _dedupe_citations(result.citations)
         result.follow_ups = _clean_follow_ups(result.follow_ups)
+        result.low_confidence = self._low_confidence(retrieval)
         self._enrich_titles(result.citations)
         logger.info(
             "agent.answered",
@@ -353,6 +371,7 @@ class RAGAgent:
                 "chunks_used": len(chunks),
                 "citations": len(result.citations),
                 "follow_ups": len(result.follow_ups),
+                "low_confidence": result.low_confidence,
             },
         )
         return result
@@ -418,6 +437,7 @@ class RAGAgent:
         citations, follow_ups = _parse_tail(splitter.citation_tail)
         citations = _dedupe_citations(citations)
         self._enrich_titles(citations)
+        low_confidence = self._low_confidence(retrieval)
         logger.info(
             "agent.streamed",
             extra={
@@ -425,10 +445,14 @@ class RAGAgent:
                 "chunks_used": len(chunks),
                 "citations": len(citations),
                 "follow_ups": len(follow_ups),
+                "low_confidence": low_confidence,
             },
         )
         yield AnswerComplete(
-            text="".join(prose), citations=citations, follow_ups=follow_ups
+            text="".join(prose),
+            citations=citations,
+            follow_ups=follow_ups,
+            low_confidence=low_confidence,
         )
 
     def _enrich_titles(self, citations: list[Citation]) -> None:

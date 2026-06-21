@@ -50,6 +50,7 @@ class Response:
     citations: list[Citation]
     turn_id: Optional[UUID] = None      # the assistant turn, for rating
     follow_ups: list[str] = field(default_factory=list)
+    low_confidence: bool = False        # weak grounding -> show a verify badge
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +79,7 @@ class StreamDone:
     citations: list[Citation]
     turn_id: Optional[UUID] = None      # the assistant turn, for rating
     follow_ups: list[str] = field(default_factory=list)
+    low_confidence: bool = False        # weak grounding -> show a verify badge
 
 
 StreamEvent = Union[StreamMeta, StreamToken, StreamDone]
@@ -251,6 +253,7 @@ class Assistant:
             citations=answer.citations,
             turn_id=assistant_turn.id,
             follow_ups=answer.follow_ups,
+            low_confidence=answer.low_confidence,
         )
 
     def handle_stream(
@@ -319,6 +322,7 @@ class Assistant:
         full_text = ""
         citations: list[Citation] = []
         follow_ups: list[str] = []
+        low_confidence = False
         try:
             for piece in self._agent.answer_stream(
                 message=message,
@@ -333,6 +337,7 @@ class Assistant:
                     full_text = piece.text
                     citations = piece.citations
                     follow_ups = piece.follow_ups
+                    low_confidence = piece.low_confidence
         except GeneratorExit:
             # Client disconnected mid-stream (Stop button, closed tab). The
             # client persists the partial answer it kept on screen via
@@ -361,6 +366,7 @@ class Assistant:
             citations=citations,
             turn_id=assistant_turn.id,
             follow_ups=follow_ups,
+            low_confidence=low_confidence,
         )
 
     def record_rating(

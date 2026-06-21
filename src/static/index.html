@@ -270,6 +270,10 @@ textarea,input{font-family:var(--font)}
 .cit-link:hover{text-decoration:underline}
 .cit-link::after{content:"↗";font-size:10px;opacity:.6}
 .cit-sub{font-size:11.5px;color:var(--t4)}
+/* Low-confidence ("verify this") caution banner under an answer */
+.low-conf{display:flex;gap:8px;align-items:flex-start;margin:10px 20px 4px;padding:9px 12px;background:var(--amber-l);border:1px solid rgba(217,119,6,.3);border-radius:var(--r);font-size:12px;line-height:1.45;color:var(--amber)}
+.low-conf svg{flex-shrink:0;margin-top:1px}
+.low-conf strong{font-weight:700}
 
 /* Response actions */
 .response-actions{display:flex;align-items:center;gap:5px;margin-top:7px;padding-left:2px}
@@ -1221,6 +1225,7 @@ function renderAi(m, stream = true) {
     bodyEl.innerHTML = parseMD(m.content, cits);
     badgeEl.innerHTML = evidenceBadge(cits.length);
     checkCollapse(bodyEl, cardEl);
+    if (m.lowConfidence) cardEl.insertAdjacentHTML('beforeend', lowConfHTML());
     if (cits.length) cardEl.insertAdjacentHTML('beforeend', citHTML(cits));
     buildActions(actsEl, m, row);
     buildFU(fuEl, m);
@@ -1336,7 +1341,7 @@ async function sendMessage(text) {
         if (ev.event === 'meta') {
           hideThinking();
           aiMsg = { role:'ai', content:'', ts:Date.now(), type:ev.data.type,
-                    language:ev.data.language, citations:[], followups:[], live:true };
+                    language:ev.data.language, citations:[], followups:[], lowConfidence:false, live:true };
           messages.push(aiMsg);
           handles = renderAi(aiMsg, true);
         } else if (ev.event === 'token') {
@@ -1345,6 +1350,7 @@ async function sendMessage(text) {
           if (aiMsg) {
             aiMsg.citations = ev.data.citations || [];
             aiMsg.followups = ev.data.follow_ups || [];
+            aiMsg.lowConfidence = ev.data.low_confidence || false;
             aiMsg.turnId = ev.data.turn_id || null;
             delete aiMsg.live;
           }
@@ -1553,6 +1559,13 @@ function buildFU(el, m) {
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
       ${esc(q)}
     </button>`).join('');
+}
+
+function lowConfHTML() {
+  return `<div class="low-conf" role="note" aria-label="Low confidence warning">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    <span><strong>Low confidence.</strong> I couldn't find a strong match in the documentation — please verify against the source before relying on this.</span>
+  </div>`;
 }
 
 function citHTML(cits) {
