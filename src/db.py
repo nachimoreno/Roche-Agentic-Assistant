@@ -150,11 +150,31 @@ class TurnCitation(SQLModel, table=True):
 # ---------------------------------------------------------------------------
 
 def make_engine(database_url: str, *, echo: bool = False) -> Engine:
+    # Hosted Postgres providers (Neon/Supabase/Render) hand out URLs with a bare
+    # `postgresql://` (or legacy `postgres://`) scheme, which SQLAlchemy resolves
+    # to psycopg2 — a driver we don't ship. Pin them to the psycopg3 dialect we
+    # do install. A scheme that already names a driver (e.g. +psycopg) is left
+    # untouched.
+    if database_url.startswith("postgres://"):
+        database_url = "postgresql://" + database_url[len("postgres://"):]
+    if database_url.startswith("postgresql://"):
+        database_url = "postgresql+psycopg://" + database_url[len("postgresql://"):]
+
     connect_args: dict = {}
+    engine_kwargs: dict = {}
     if database_url.startswith("sqlite"):
         # Same engine across threads; the orchestrator is single-process for now.
         connect_args["check_same_thread"] = False
-    return create_engine(database_url, echo=echo, connect_args=connect_args)
+    else:
+        # Hosted Postgres (Neon/Supabase behind DATABASE_URL). Such DBs idle /
+        # scale-to-zero and silently drop pooled connections; pre_ping tests a
+        # connection before handing it out (transparently reconnecting — and
+        # waking a suspended DB — on the next request), and recycle caps
+        # connection age so we never reuse a long-dead socket.
+        engine_kwargs.update(pool_pre_ping=True, pool_recycle=300)
+    return create_engine(
+        database_url, echo=echo, connect_args=connect_args, **engine_kwargs
+    )
 
 
 def create_all(engine: Engine) -> None:

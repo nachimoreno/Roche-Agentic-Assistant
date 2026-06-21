@@ -1,3 +1,13 @@
+---
+title: Roche Scientist Assistant
+emoji: 🧪
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Roche Scientist Assistant
 
 A conversational AI assistant for Roche scientists — one place to ask about protocols, onboarding, equipment, samples, and to report issues, instead of hunting across dozens of internal apps.

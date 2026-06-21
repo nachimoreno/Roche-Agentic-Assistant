@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,6 +22,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
+        populate_by_name=True,
     )
 
     # ---- LLM ----------------------------------------------------------
@@ -30,7 +32,13 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 1024
 
     # ---- Persistence --------------------------------------------------
-    database_url: str = "sqlite:///data/app.db"
+    # Read from DATABASE_URL (canonical) or DB_CONNECTION_STRING (alias), so a
+    # hosted provider's connection string drops in under either name. Unset =>
+    # local sqlite. make_engine upgrades a bare postgres:// scheme to psycopg3.
+    database_url: str = Field(
+        default="sqlite:///data/app.db",
+        validation_alias=AliasChoices("DATABASE_URL", "DB_CONNECTION_STRING"),
+    )
 
     # ---- Demo analytics seeding ---------------------------------------
     # On startup, idempotently populate the /admin analytics dashboard with a

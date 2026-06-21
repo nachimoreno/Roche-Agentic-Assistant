@@ -45,6 +45,7 @@ SHAREPOINT MIGRATION PATH:
 from __future__ import annotations
 
 import io
+import json
 import logging
 import os
 from dataclasses import dataclass, field
@@ -201,17 +202,25 @@ class GoogleDriveSource:
                 "Set GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_OAUTH_CREDENTIALS."
             )
 
-        raw = open(self._creds_path).read()
         scopes = ["https://www.googleapis.com/auth/drive.readonly"]
 
-        if '"type": "service_account"' in raw:
+        # The credential is accepted two ways:
+        #   * a filesystem path to a key file (local dev), or
+        #   * the raw JSON content itself (hosted deploys like HF Spaces, where
+        #     the key is injected as a secret env var, not a committed file).
+        # A leading "{" means inline JSON; anything else is treated as a path.
+        value = self._creds_path.strip()
+        raw = value if value.startswith("{") else open(value).read()
+        info = json.loads(raw)
+
+        if info.get("type") == "service_account":
             from google.oauth2 import service_account
-            return service_account.Credentials.from_service_account_file(
-                self._creds_path, scopes=scopes
+            return service_account.Credentials.from_service_account_info(
+                info, scopes=scopes
             )
         else:
             from google.oauth2.credentials import Credentials
-            return Credentials.from_authorized_user_file(self._creds_path, scopes)
+            return Credentials.from_authorized_user_info(info, scopes)
 
     def _list_files(self, folder_id: str, subfolder_name: str = "") -> list[dict]:
         """Return flat list of file metadata dicts from a Drive folder.

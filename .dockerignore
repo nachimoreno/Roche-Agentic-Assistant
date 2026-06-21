@@ -1,0 +1,30 @@
+# Keep the build context (and the published image) free of local state and
+# secrets. Most of these are gitignored too, but a Space build context is the
+# working tree, not git — so exclude them explicitly.
+.git
+.gitignore
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Local runtime state — rebuilt on boot (Chroma re-ingests from Drive; the DB
+# lives in external Postgres in deployment).
+.chroma/
+data/app.db
+data/app.db-journal
+logs/
+*.log
+
+# Secrets — injected as env vars/secrets at runtime, never baked into the image.
+.env
+.misc/
+secrets/
+credentials/
+
+# Editor / OS cruft and docs not needed at runtime.
+.DS_Store
+.vscode/
+.idea/
+tests/
