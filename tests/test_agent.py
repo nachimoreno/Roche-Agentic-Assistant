@@ -579,6 +579,35 @@ def test_parse_tail_accepts_object_array_and_malformed():
     assert _parse_tail("not json at all") == ([], [])
 
 
+# ---------------------------------------------------------------------------
+# retrieval_query override (spell-corrected query drives retrieval)
+# ---------------------------------------------------------------------------
+
+def test_answer_retrieves_on_override_query_but_answers_original():
+    docs = FakeDocumentStore([_chunk("ctx", source_id="a.md")])
+    llm = RecordingLLM({"text": "ok", "citations": []})
+    agent = RAGAgent(document_store=docs, llm=llm)
+
+    agent.answer(
+        "how do I bok an instrumnet?",
+        language="english",
+        retrieval_query="how do I book an instrument?",
+    )
+    # Retrieval ran on the corrected query...
+    assert docs.calls[-1][0] == "how do I book an instrument?"
+    # ...but the LLM still got the original (typo'd) message.
+    assert llm.last["user"] == "how do I bok an instrumnet?"
+
+
+def test_answer_retrieves_on_message_when_no_override():
+    docs = FakeDocumentStore([_chunk("ctx", source_id="a.md")])
+    llm = RecordingLLM({"text": "ok", "citations": []})
+    agent = RAGAgent(document_store=docs, llm=llm)
+
+    agent.answer("clean the centrifuge", language="english")
+    assert docs.calls[-1][0] == "clean the centrifuge"
+
+
 def test_answer_stream_enriches_citation_title_from_doc_metadata():
     deltas = [
         "Wipe it down.", "\n---CITATIONS---\n",

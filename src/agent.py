@@ -311,9 +311,13 @@ class RAGAgent:
         message: str,
         language: str,
         history: Sequence[Turn] = (),
+        retrieval_query: Optional[str] = None,
     ) -> AnswerResult:
+        # Retrieve on `retrieval_query` (e.g. a spell-corrected version) when
+        # given, so typos don't starve retrieval; the LLM still answers the
+        # original `message`, which it understands despite typos.
         retrieval = self._docs.retrieve_scored(
-            _retrieval_query(message, history), k=self._top_k
+            _retrieval_query(retrieval_query or message, history), k=self._top_k
         )
         if self._off_domain(retrieval):
             logger.info(
@@ -358,6 +362,7 @@ class RAGAgent:
         message: str,
         language: str,
         history: Sequence[Turn] = (),
+        retrieval_query: Optional[str] = None,
     ) -> Iterator[StreamPiece]:
         """Stream the answer.
 
@@ -365,9 +370,12 @@ class RAGAgent:
         `AnswerComplete` carrying the full text and the citations parsed from
         the post-delimiter JSON tail. The `---CITATIONS---` sentinel and the
         JSON after it are never leaked to the caller as prose.
+
+        `retrieval_query` (e.g. a spell-corrected message) drives retrieval when
+        given, so typos don't starve it; the LLM still answers `message`.
         """
         retrieval = self._docs.retrieve_scored(
-            _retrieval_query(message, history), k=self._top_k
+            _retrieval_query(retrieval_query or message, history), k=self._top_k
         )
         if self._off_domain(retrieval):
             logger.info(

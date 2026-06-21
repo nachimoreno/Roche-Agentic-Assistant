@@ -229,6 +229,7 @@ class Assistant:
             message=message,
             language=analysis.language,
             history=history,
+            retrieval_query=analysis.corrected_query,
         )
 
         assistant_turn = self._sessions.append_turn(
@@ -323,6 +324,7 @@ class Assistant:
                 message=message,
                 language=analysis.language,
                 history=history,
+                retrieval_query=analysis.corrected_query,
             ):
                 if isinstance(piece, TextDelta):
                     full_text += piece.text

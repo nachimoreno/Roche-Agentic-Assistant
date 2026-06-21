@@ -86,6 +86,11 @@ class AnalysisResult(BaseModel):
     # an answerable operational question (e.g. "this is confusing — how do I
     # request access?"). Lets the orchestrator answer and log feedback at once.
     contains_question: bool = False
+    # The latest message with spelling mistakes / typos fixed (meaning, language
+    # and intent preserved). Used as the retrieval query so heavy typos don't
+    # starve retrieval and wrongly trip the off-domain guardrail. Downstream
+    # falls back to the original message when this is absent.
+    corrected_query: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -157,6 +162,14 @@ plus a real question). Set it to false for pure feedback with no question
 
 Return the full language name in lowercase: english, german, french,
 italian, spanish, or "other" if none of the above.
+
+## SPELL CORRECTION
+
+Also return "corrected_query": the LATEST message rewritten with spelling
+mistakes and typos fixed, preserving the original meaning, language, and
+intent. Only fix clear typos — do NOT answer it, translate it, rephrase it,
+expand abbreviations, or add or remove words. If there are no mistakes, return
+the message unchanged.
 
 ## OUTPUT
 
