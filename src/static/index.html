@@ -297,6 +297,25 @@ textarea,input{font-family:var(--font)}
 .fu-chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
 .fu-chip{display:flex;align-items:center;gap:5px;padding:6px 13px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-f);font-size:12.5px;font-weight:500;color:var(--t2);cursor:pointer;transition:all var(--tx);box-shadow:var(--s-sm)}
 .fu-chip:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-light);transform:translateY(-1px);box-shadow:var(--s)}
+/* Help / how-to modal */
+.help-modal{position:fixed;inset:0;z-index:2200;display:none;align-items:center;justify-content:center;padding:20px}
+.help-modal.open{display:flex}
+.help-backdrop{position:absolute;inset:0;background:rgba(15,25,35,.45)}
+.help-card{position:relative;width:100%;max-width:560px;max-height:86vh;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);box-shadow:var(--s-xl);overflow:hidden;animation:msgIn .2s}
+.help-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0}
+.help-head h2{font-size:15.5px;font-weight:700;color:var(--t1)}
+.help-close{width:30px;height:30px;border-radius:var(--r);font-size:22px;line-height:1;color:var(--t3);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.help-close:hover{background:var(--surface-2);color:var(--t1)}
+.help-body{padding:4px 20px 18px;overflow-y:auto}
+.help-item{display:flex;gap:12px;align-items:flex-start;padding:13px 0;border-bottom:1px solid var(--border)}
+.help-item:last-child{border-bottom:none}
+.help-ico{flex-shrink:0;width:32px;height:32px;border-radius:var(--r-lg);background:var(--blue-light);color:var(--blue);display:flex;align-items:center;justify-content:center}
+.help-ic-t{font-size:13.5px;font-weight:600;color:var(--t1);margin-bottom:3px}
+.help-ic-d{font-size:12.5px;line-height:1.5;color:var(--t3)}
+.help-ic-d strong{color:var(--t2);font-weight:600}
+.help-eg{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
+.help-eg button{padding:6px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-f);font-size:12px;color:var(--t2);cursor:pointer;transition:all var(--tx)}
+.help-eg button:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-light)}
 
 /* Thinking */
 .thinking-row{display:flex;gap:12px;align-items:flex-start;margin-top:16px}
@@ -689,6 +708,9 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
     <svg id="iconSun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     <svg id="iconMoon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
   </button>
+  <button class="hdr-btn" id="helpBtn" title="Help — how to use this" aria-label="Help" onclick="openHelp()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  </button>
   <div class="hdr-sep" aria-hidden="true" style="margin-left:2px"></div>
   <button class="btn-new" id="btnNew" aria-label="New conversation">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -807,6 +829,60 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
       <span class="cmdpal-esc">ESC</span>
     </div>
     <div class="cmdpal-list" id="cmdList"></div>
+  </div>
+</div>
+
+<div class="help-modal" id="helpModal" role="dialog" aria-modal="true" aria-label="Help — how to use this">
+  <div class="help-backdrop" onclick="closeHelp()"></div>
+  <div class="help-card">
+    <div class="help-head">
+      <h2>How to use the Roche Scientific AI</h2>
+      <button class="help-close" onclick="closeHelp()" aria-label="Close help">&times;</button>
+    </div>
+    <div class="help-body">
+      <div class="help-item">
+        <span class="help-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+        <div><div class="help-ic-t">What I can help with</div><div class="help-ic-d">Lab operations from your Roche documentation: onboarding &amp; access, booking instruments, cleaning &amp; decontamination, incident reporting, sample stock, ordering consumables, waste management and more. I point you to the right internal tool when an action lives there.</div></div>
+      </div>
+      <div class="help-item">
+        <span class="help-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></span>
+        <div><div class="help-ic-t">Ask by typing or speaking</div><div class="help-ic-d">Type your question, or tap the microphone to speak it — your voice is transcribed into the message box.</div></div>
+      </div>
+      <div class="help-item">
+        <span class="help-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg></span>
+        <div><div class="help-ic-t">Listen to answers</div><div class="help-ic-d">Tap <strong>Listen</strong> under any answer to have it read aloud — in the same language as the reply.</div></div>
+      </div>
+      <div class="help-item">
+        <span class="help-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>
+        <div><div class="help-ic-t">Trust the sources</div><div class="help-ic-d">Answers cite the documents they came from — click a citation to open the source in Google Drive. Each document is shown once.</div></div>
+      </div>
+      <div class="help-item">
+        <span class="help-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>
+        <div><div class="help-ic-t">Follow-up suggestions</div><div class="help-ic-d">After an answer, tap one of the suggested chips to keep going without typing.</div></div>
+      </div>
+      <div class="help-item">
+        <span class="help-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span>
+        <div><div class="help-ic-t">Your language</div><div class="help-ic-d">Ask in English, German, French or Italian — I detect it and reply in your language, translating from the source docs.</div></div>
+      </div>
+      <div class="help-item">
+        <span class="help-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14"/></svg></span>
+        <div><div class="help-ic-t">Honest about what it knows</div><div class="help-ic-d">I answer only from Roche docs. If something isn't covered I'll say so rather than guess, and I'll flag answers I'm less sure about so you can verify.</div></div>
+      </div>
+      <div class="help-item">
+        <span class="help-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+        <div><div class="help-ic-t">Your conversations are saved</div><div class="help-ic-d">Past chats live in the left sidebar — resume them on any device, search within them, or export them. Press <strong>Ctrl/&#8984;+K</strong> for quick commands.</div></div>
+      </div>
+      <div class="help-item">
+        <span class="help-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
+        <div><div class="help-ic-t">Try asking</div>
+          <div class="help-eg">
+            <button onclick="helpAsk('How do I book an instrument?')">How do I book an instrument?</button>
+            <button onclick="helpAsk('How do I report an incident?')">How do I report an incident?</button>
+            <button onclick="helpAsk('What is the onboarding process for new scientists?')">Onboarding process?</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1701,6 +1777,14 @@ function searchNav(e) {
 
 /* ─── DARK MODE ──────────────────────────────────────────────── */
 function toggleDark() { applyDark(document.documentElement.dataset.theme !== 'dark'); }
+
+/* ─── HELP / HOW-TO ──────────────────────────────────────────── */
+function openHelp()  { document.getElementById('helpModal')?.classList.add('open'); }
+function closeHelp() { document.getElementById('helpModal')?.classList.remove('open'); }
+function helpAsk(q)  { closeHelp(); sendMessage(q); }
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('helpModal')?.classList.contains('open')) closeHelp();
+});
 
 function applyDark(on) {
   document.documentElement.dataset.theme = on ? 'dark' : 'light';

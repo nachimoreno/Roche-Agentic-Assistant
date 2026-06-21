@@ -168,6 +168,11 @@ summary (and the capabilities document in the context if present):
   German, French, and Italian.
 - Your chat history is persisted, so the conversation continues across
   devices.
+- How scientists use you: they can type or tap the microphone to speak a
+  question, tap "Listen" under an answer to hear it read aloud, click a
+  citation to open its source document, and tap a suggested follow-up to
+  continue. A Help (?) button in the top bar explains all of this. When
+  asked how to use you or a specific feature, explain it from this.
 - You cannot yet create ServiceNow incidents or act inside other internal
   applications — those are planned.
 
