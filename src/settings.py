@@ -32,6 +32,16 @@ class Settings(BaseSettings):
     # ---- Persistence --------------------------------------------------
     database_url: str = "sqlite:///data/app.db"
 
+    # ---- Demo analytics seeding ---------------------------------------
+    # On startup, idempotently populate the /admin analytics dashboard with a
+    # synthetic feedback dataset (see demo_seed.py) so it's always demoable on a
+    # fresh, locally-hosted database. Seeds once when the demo tenant is empty;
+    # never duplicates. Set false to disable (e.g. a real deployment that should
+    # only ever show genuine feedback). `demo_feedback_count` tunes volume — a
+    # higher value smooths the per-day trend line.
+    seed_demo_feedback: bool = True
+    demo_feedback_count: int = 2000
+
     # ---- Retrieval ----------------------------------------------------
     chroma_path: str = ".chroma"
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"

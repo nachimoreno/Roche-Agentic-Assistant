@@ -38,6 +38,7 @@ from datetime import datetime, timedelta, timezone
 
 from auth import get_current_user, hash_password, require_admin, verify_password
 from db import User, utcnow
+from demo_seed import ensure_demo_feedback
 from llm import LLMAuthError, transcribe_audio
 from logging_setup import setup_logging
 from main import build_assistant, build_drive_source, build_engine
@@ -115,6 +116,14 @@ async def lifespan(app: FastAPI):
     app.state.users = UserRepository(engine)
     app.state.sessions = SessionRepository(engine)
     app.state.feedback = FeedbackRepository(engine)
+    # Keep the /admin analytics dashboard demoable on any fresh DB: seed a
+    # synthetic feedback dataset once if the demo tenant is empty (no-op
+    # otherwise). Failures here never block startup (see ensure_demo_feedback).
+    ensure_demo_feedback(
+        engine,
+        enabled=_settings.seed_demo_feedback,
+        count=_settings.demo_feedback_count,
+    )
     _report_drive_status(_settings)
     try:
         app.state.assistant = build_assistant(_settings, engine=engine)
