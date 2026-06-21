@@ -43,6 +43,7 @@ from logging_setup import setup_logging
 from main import build_assistant, build_drive_source, build_engine
 from orchestrator import Assistant, StreamDone, StreamMeta, StreamToken
 from repositories import (
+    AnnouncementRepository,
     EmailTakenError,
     FeedbackRepository,
     SessionRepository,
@@ -115,6 +116,7 @@ async def lifespan(app: FastAPI):
     app.state.users = UserRepository(engine)
     app.state.sessions = SessionRepository(engine)
     app.state.feedback = FeedbackRepository(engine)
+    app.state.announcements = AnnouncementRepository(engine)
     _report_drive_status(_settings)
     try:
         app.state.assistant = build_assistant(_settings, engine=engine)
@@ -252,6 +254,15 @@ def _user_out(user: User) -> UserOut:
     )
 
 
+class AnnouncementOut(BaseModel):
+    id: Optional[str] = None           # null id + null message means "no banner"
+    message: Optional[str] = None
+
+
+class PublishAnnouncementRequest(BaseModel):
+    message: str                       # empty/blank message takes the banner down
+
+
 def _iso_utc(dt: datetime) -> str:
     """Serialize a stored timestamp as an explicit-UTC ISO string.
 
@@ -335,6 +346,35 @@ def logout(request: Request):
 @app.get("/api/auth/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user)):
     return _user_out(user)
+
+
+# ---------------------------------------------------------------------------
+# Announcements — an admin publishes a banner shown to all scientists
+# ---------------------------------------------------------------------------
+
+@app.get("/api/announcement", response_model=AnnouncementOut)
+def get_announcement(request: Request, user: User = Depends(get_current_user)):
+    """The current banner (or an empty payload when none is active)."""
+    ann = request.app.state.announcements.get_active()
+    if ann is None:
+        return AnnouncementOut()
+    return AnnouncementOut(id=str(ann.id), message=ann.message)
+
+
+@app.put("/api/announcement", response_model=AnnouncementOut)
+def publish_announcement(
+    body: PublishAnnouncementRequest,
+    request: Request,
+    user: User = Depends(require_admin),
+):
+    """Publish (or, with a blank message, take down) the banner. Admins only."""
+    message = body.message.strip()
+    repo = request.app.state.announcements
+    if not message:
+        repo.clear()
+        return AnnouncementOut()
+    ann = repo.publish(message, created_by=user.email)
+    return AnnouncementOut(id=str(ann.id), message=ann.message)
 
 
 # ---------------------------------------------------------------------------

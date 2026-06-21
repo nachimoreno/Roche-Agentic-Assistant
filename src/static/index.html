@@ -156,6 +156,15 @@ textarea,input{font-family:var(--font)}
 .pinned-item-unpin{color:var(--t4);font-size:14px;line-height:1;transition:color var(--tx);flex-shrink:0}
 .pinned-item-unpin:hover{color:var(--red)}
 
+/* Admin announcement banner */
+.announce-bar{display:none;max-width:var(--col);margin:0 auto 6px;padding:0 20px}
+.announce-bar.show{display:block;animation:msgIn .2s}
+.announce-inner{display:flex;align-items:flex-start;gap:10px;padding:11px 14px;background:var(--blue-light);border:1px solid var(--blue-mid);border-radius:var(--r-lg)}
+.announce-ico{flex-shrink:0;margin-top:1px;color:var(--blue)}
+.announce-msg{flex:1;min-width:0;font-size:13px;line-height:1.5;color:var(--t1);font-weight:500}
+.announce-x{flex-shrink:0;font-size:19px;line-height:1;color:var(--t4);width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:var(--r)}
+.announce-x:hover{background:var(--surface);color:var(--t2)}
+
 /* ── CONVERSATION ────────────────────────────────────────────── */
 .conversation{padding-top:var(--top-pad);padding-bottom:170px;min-height:100vh}
 .messages{max-width:var(--col);margin:0 auto;padding:16px 20px 0;display:flex;flex-direction:column;gap:4px}
@@ -751,6 +760,7 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
 
 <!-- CONVERSATION -->
 <main class="conversation" role="main">
+  <div class="announce-bar" id="announceBar"></div>
   <div class="messages" id="messages" aria-live="polite" aria-relevant="additions"></div>
 </main>
 
@@ -893,6 +903,7 @@ const SK_MSGS  = 'roche_msgs_v4';
 const SK_DARK  = 'roche_dark';
 const SK_PIN   = 'roche_pinned';
 const SK_DRAFT = 'roche_draft';
+const SK_ANNOUNCE_X = 'roche_announce_dismissed';
 
 let sessionId  = null;
 let messages   = [];
@@ -953,6 +964,8 @@ async function bootApp() {
   // Admins get the feedback-analytics console link.
   document.getElementById('adminBtn').style.display =
     currentUser.role === 'admin' ? '' : 'none';
+
+  loadAnnouncement();   // show the current admin banner, if any
 
   // Desktop: dock the sidebar (ChatGPT-style) unless the user collapsed it.
   if (localStorage.getItem(SK_SB) !== '0') document.body.classList.add('docked');
@@ -1786,6 +1799,52 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && document.getElementById('helpModal')?.classList.contains('open')) closeHelp();
 });
 
+/* ─── ANNOUNCEMENTS (admin-published banner) ─────────────────── */
+async function loadAnnouncement() {
+  try {
+    const r = await fetch('/api/announcement');
+    if (r.ok) renderAnnounce(await r.json());
+  } catch {}
+}
+function renderAnnounce(a) {
+  const bar = document.getElementById('announceBar');
+  if (!bar) return;
+  const dismissed = localStorage.getItem(SK_ANNOUNCE_X);
+  if (!a || !a.message || (a.id && a.id === dismissed)) {
+    bar.classList.remove('show'); bar.innerHTML = ''; bar.dataset.id = '';
+    return;
+  }
+  bar.dataset.id = a.id || '';
+  bar.innerHTML = `<div class="announce-inner">
+    <span class="announce-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg></span>
+    <span class="announce-msg">${esc(a.message)}</span>
+    <button class="announce-x" onclick="dismissAnnounce()" aria-label="Dismiss announcement">&times;</button>
+  </div>`;
+  bar.classList.add('show');
+}
+function dismissAnnounce() {
+  const bar = document.getElementById('announceBar');
+  if (bar && bar.dataset.id) localStorage.setItem(SK_ANNOUNCE_X, bar.dataset.id);
+  bar?.classList.remove('show');
+}
+async function promptPublishAnnounce() {
+  const msg = prompt('Announcement to show all scientists (leave blank to take it down):', '');
+  if (msg === null) return;                 // cancelled
+  await publishAnnouncement(msg);
+}
+async function publishAnnouncement(message) {
+  try {
+    const r = await fetch('/api/announcement', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
+    });
+    if (!r.ok) { toast('Could not update the announcement.', 'amber'); return; }
+    localStorage.removeItem(SK_ANNOUNCE_X);   // so the publisher sees the new banner
+    await loadAnnouncement();
+    toast(message.trim() ? 'Announcement published to all scientists' : 'Announcement taken down', 'green');
+  } catch { toast('Could not update the announcement.', 'amber'); }
+}
+
 function applyDark(on) {
   document.documentElement.dataset.theme = on ? 'dark' : 'light';
   localStorage.setItem(SK_DARK, on ? '1' : '0');
@@ -1823,14 +1882,21 @@ const CMD_ITEMS = [
   { icon:_CI('<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>'), label:'Toggle dark mode',    desc:'Switch light / dark theme',      kbd:['⌘','D'], fn:() => { closeCmdK(); toggleDark(); } },
   { icon:_CI('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>'), label:'Search conversation', desc:'Find text in this session',      kbd:['⌘','F'], fn:() => { closeCmdK(); if(!document.getElementById('searchBar').classList.contains('open')) toggleSearch(); } },
   { icon:_CI('<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1Z"/>'), label:'View pinned responses',desc:'Show pinned messages',          kbd:[],        fn:() => { closeCmdK(); if(pinned.length) { document.getElementById('pinnedStrip').classList.add('open'); updateTopPad(); } } },
+  { icon:_CI('<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>'), label:'Publish announcement', desc:'Show a banner to all scientists (admin)', kbd:[], admin:true, fn:() => { closeCmdK(); promptPublishAnnounce(); } },
 ];
+
+// Command-palette items visible to the current user (admin-only items hidden
+// from regular scientists).
+function visibleCmds() {
+  return CMD_ITEMS.filter(c => !c.admin || currentUser?.role === 'admin');
+}
 
 let cmdFocusIdx = -1;
 
 function openCmdK() {
   document.getElementById('cmdpal').classList.add('open');
   document.getElementById('cmdInput').value = '';
-  renderCmds(CMD_ITEMS);
+  renderCmds(visibleCmds());
   setTimeout(() => document.getElementById('cmdInput').focus(), 50);
 }
 
@@ -1851,14 +1917,14 @@ function renderCmds(items) {
 }
 
 function filterCmds(q) {
-  const filtered = CMD_ITEMS.filter(c => c.label.toLowerCase().includes(q.toLowerCase()) || c.desc.toLowerCase().includes(q.toLowerCase()));
+  const filtered = visibleCmds().filter(c => c.label.toLowerCase().includes(q.toLowerCase()) || c.desc.toLowerCase().includes(q.toLowerCase()));
   renderCmds(filtered);
   cmdFocusIdx = -1;
 }
 
 function runCmd(i) {
   const q = document.getElementById('cmdInput').value;
-  const items = CMD_ITEMS.filter(c => c.label.toLowerCase().includes(q.toLowerCase()) || c.desc.toLowerCase().includes(q.toLowerCase()));
+  const items = visibleCmds().filter(c => c.label.toLowerCase().includes(q.toLowerCase()) || c.desc.toLowerCase().includes(q.toLowerCase()));
   items[i]?.fn();
 }
 
