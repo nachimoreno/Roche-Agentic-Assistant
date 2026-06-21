@@ -146,6 +146,29 @@ a.back:hover{color:var(--blue-hi)}
 .chip b{color:var(--txt);font-variant-numeric:tabular-nums}
 .footnote{margin-top:16px;font-size:10.5px;color:var(--t3);letter-spacing:.04em}
 
+/* announcement composer */
+.announce{grid-column:span 12}
+.annx{display:flex;align-items:center;gap:9px;font-size:11.5px;color:var(--t2);margin:-2px 0 12px}
+.annx b{color:var(--txt);font-weight:600}
+.ann-dot{width:7px;height:7px;border-radius:50%;background:var(--t3);flex:none}
+.ann-dot.live{background:var(--green);box-shadow:0 0 8px var(--green)}
+.announce textarea{
+  width:100%;min-height:62px;resize:vertical;background:var(--inset);
+  border:1px solid var(--line-2);border-radius:var(--r);color:var(--txt);
+  font:12.5px/1.55 var(--mono);padding:10px 12px;
+}
+.announce textarea::placeholder{color:var(--t3)}
+.announce textarea:focus{outline:none;border-color:var(--blue)}
+.ann-actions{display:flex;align-items:center;gap:12px;margin-top:11px}
+.ann-actions .count{font-size:10px;color:var(--t3);letter-spacing:.1em;font-variant-numeric:tabular-nums}
+.ann-actions .msg{flex:1;font-size:11px;letter-spacing:.04em}
+.ann-actions .msg.ok{color:var(--green)}
+.ann-actions .msg.err{color:var(--amber)}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.primary:hover{background:var(--blue-hi);border-color:var(--blue-hi);color:#06101f}
+.btn.danger:hover{border-color:var(--red);color:var(--red)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+
 /* states */
 .empty{padding:34px 0;text-align:center;color:var(--t3);font-size:11.5px;letter-spacing:.18em;text-transform:uppercase}
 .lockout{max-width:420px;margin:18vh auto;text-align:center;border:1px solid var(--line-2);border-radius:10px;padding:40px 32px;background:var(--panel)}
@@ -251,6 +274,20 @@ a.back:hover{color:var(--blue-hi)}
       <div class="label">Languages</div>
       <div class="chiprow" id="langChips"><div class="empty">awaiting signal</div></div>
       <div class="footnote">Counts include volunteered feedback and rated-answer comments. Soft-deleted entries excluded.</div>
+    </section>
+
+    <!-- announcement composer (admin action) -->
+    <section class="panel announce" aria-label="Announcement">
+      <div class="label">Announcement <small>banner shown to all scientists</small></div>
+      <div class="annx"><span class="ann-dot" id="annDot"></span><span id="annState">No banner is live.</span></div>
+      <textarea id="annInput" maxlength="280" rows="2"
+                placeholder="e.g. Lab 3 is closed Friday for maintenance — please use Lab 2." aria-label="Announcement message"></textarea>
+      <div class="ann-actions">
+        <span class="count" id="annCount">0 / 280</span>
+        <span class="msg" id="annMsg" role="status" aria-live="polite"></span>
+        <button class="btn danger" id="annClear">TAKE DOWN</button>
+        <button class="btn primary" id="annPublish">PUBLISH</button>
+      </div>
     </section>
   </div>
 
@@ -437,6 +474,52 @@ async function load(){
   }
 }
 
+/* announcement composer (admin) — publish / edit / take down the banner */
+const escAnn = s => (s||"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function renderAnn(a){
+  const live = !!(a && a.message);
+  $("annDot").classList.toggle("live", live);
+  $("annState").innerHTML = live ? `Live: <b>${escAnn(a.message)}</b>` : "No banner is live.";
+  $("annClear").disabled = !live;
+  // Prefill the editor with the current banner once, without clobbering a draft.
+  if (live && document.activeElement !== $("annInput") && !$("annInput").value){
+    $("annInput").value = a.message;
+    annCount();
+  }
+}
+
+async function loadAnn(){
+  try { renderAnn(await fetchJSON("/api/announcement")); }
+  catch (err) { if (err.denied) lockout(); }
+}
+
+function annNote(text, kind){
+  const el = $("annMsg");
+  el.textContent = text; el.className = "msg " + (kind || "");
+  if (text) setTimeout(() => { if (el.textContent === text){ el.textContent = ""; el.className = "msg"; } }, 4000);
+}
+
+async function publishAnn(message){
+  $("annPublish").disabled = true;
+  try {
+    const r = await fetch("/api/announcement", {
+      method:"PUT", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ message }),
+    });
+    if (r.status === 401 || r.status === 404) return lockout();
+    if (!r.ok) throw new Error("http " + r.status);
+    renderAnn(await r.json());
+    annNote(message.trim() ? "Published to all scientists." : "Banner taken down.", "ok");
+  } catch (err) {
+    annNote("Could not update the banner.", "err");
+  } finally {
+    $("annPublish").disabled = false;
+  }
+}
+
+function annCount(){ $("annCount").textContent = $("annInput").value.length + " / 280"; }
+
 /* controls */
 document.querySelectorAll(".seg [data-days]").forEach(b => b.addEventListener("click", () => {
   document.querySelectorAll(".seg [data-days]").forEach(x => x.classList.remove("on"));
@@ -452,7 +535,16 @@ document.querySelectorAll(".dims [data-dim]").forEach(b => b.addEventListener("c
 }));
 $("refresh").addEventListener("click", load);
 
+$("annInput").addEventListener("input", annCount);
+$("annPublish").addEventListener("click", () => {
+  const msg = $("annInput").value.trim();
+  if (!msg){ annNote("Type a message, or use Take down.", "err"); return; }
+  publishAnn(msg);
+});
+$("annClear").addEventListener("click", () => { publishAnn(""); $("annInput").value = ""; annCount(); });
+
 load();
+loadAnn();
 </script>
 </body>
 </html>
