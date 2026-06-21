@@ -137,6 +137,7 @@ def build_assistant(settings: Settings, engine: Optional[Engine] = None) -> Assi
         top_k=settings.top_k,
         min_dense=settings.retrieval_min_dense,
         min_lexical=settings.retrieval_min_lexical,
+        warn_dense=settings.retrieval_warn_dense,
     )
     session_repo = SessionRepository(engine)
     feedback_repo = FeedbackRepository(engine)

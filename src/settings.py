@@ -80,6 +80,12 @@ class Settings(BaseSettings):
     # confirm the separation holds on real content.
     retrieval_min_dense: float = 0.40
     retrieval_min_lexical: float = 0.85
+    # Low-confidence ("verify this") warning. When an answer IS given but the
+    # top dense cosine is below this, the UI flags it with a caution badge so
+    # the scientist double-checks the source. Sits above retrieval_min_dense
+    # (the decline floor): below floor = declined; floor..warn = answer + warn;
+    # above warn = confident, no badge.
+    retrieval_warn_dense: float = 0.45
 
     # ---- Document source ----------------------------------------------
     # Which DocumentSource to ingest from. "google_drive" (default) pulls from

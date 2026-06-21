@@ -145,6 +145,22 @@ class TurnCitation(SQLModel, table=True):
     deleted_at: Optional[datetime] = Field(default=None, index=True)
 
 
+class Announcement(SQLModel, table=True):
+    """An admin-published message shown as a banner to all scientists.
+
+    Only one is "active" at a time: publishing a new one deactivates the
+    previous. Kept as rows (not a single mutable record) so there is an audit
+    trail of what was shown and when.
+    """
+    id: UUID = Field(default_factory=new_id, primary_key=True)
+    tenant_id: Optional[UUID] = Field(default=None, index=True)
+    message: str
+    active: bool = Field(default=True, index=True)
+    created_by: Optional[str] = Field(default=None)   # admin email that published it
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    deleted_at: Optional[datetime] = Field(default=None, index=True)
+
+
 # ---------------------------------------------------------------------------
 # Engine factory
 # ---------------------------------------------------------------------------

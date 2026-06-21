@@ -156,6 +156,15 @@ textarea,input{font-family:var(--font)}
 .pinned-item-unpin{color:var(--t4);font-size:14px;line-height:1;transition:color var(--tx);flex-shrink:0}
 .pinned-item-unpin:hover{color:var(--red)}
 
+/* Admin announcement banner */
+.announce-bar{display:none;max-width:var(--col);margin:0 auto 6px;padding:0 20px}
+.announce-bar.show{display:block;animation:msgIn .2s}
+.announce-inner{display:flex;align-items:flex-start;gap:10px;padding:11px 14px;background:var(--blue-light);border:1px solid var(--blue-mid);border-radius:var(--r-lg)}
+.announce-ico{flex-shrink:0;margin-top:1px;color:var(--blue)}
+.announce-msg{flex:1;min-width:0;font-size:13px;line-height:1.5;color:var(--t1);font-weight:500}
+.announce-x{flex-shrink:0;font-size:19px;line-height:1;color:var(--t4);width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:var(--r)}
+.announce-x:hover{background:var(--surface);color:var(--t2)}
+
 /* ── CONVERSATION ────────────────────────────────────────────── */
 .conversation{padding-top:var(--top-pad);padding-bottom:170px;min-height:100vh}
 .messages{max-width:var(--col);margin:0 auto;padding:16px 20px 0;display:flex;flex-direction:column;gap:4px}
@@ -270,6 +279,10 @@ textarea,input{font-family:var(--font)}
 .cit-link:hover{text-decoration:underline}
 .cit-link::after{content:"↗";font-size:10px;opacity:.6}
 .cit-sub{font-size:11.5px;color:var(--t4)}
+/* Low-confidence ("verify this") caution banner under an answer */
+.low-conf{display:flex;gap:8px;align-items:flex-start;margin:10px 20px 4px;padding:9px 12px;background:var(--amber-l);border:1px solid rgba(217,119,6,.3);border-radius:var(--r);font-size:12px;line-height:1.45;color:var(--amber)}
+.low-conf svg{flex-shrink:0;margin-top:1px}
+.low-conf strong{font-weight:700}
 
 /* Response actions */
 .response-actions{display:flex;align-items:center;gap:5px;margin-top:7px;padding-left:2px}
@@ -293,6 +306,29 @@ textarea,input{font-family:var(--font)}
 .fu-chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
 .fu-chip{display:flex;align-items:center;gap:5px;padding:6px 13px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-f);font-size:12.5px;font-weight:500;color:var(--t2);cursor:pointer;transition:all var(--tx);box-shadow:var(--s-sm)}
 .fu-chip:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-light);transform:translateY(-1px);box-shadow:var(--s)}
+/* Help / how-to modal */
+.help-modal{position:fixed;inset:0;z-index:2200;display:none;align-items:center;justify-content:center;padding:20px}
+.help-modal.open{display:flex}
+.help-backdrop{position:absolute;inset:0;background:rgba(15,25,35,.45)}
+.help-card{position:relative;width:100%;max-width:560px;max-height:86vh;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);box-shadow:var(--s-xl);overflow:hidden;animation:msgIn .2s}
+.help-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0}
+.help-head h2{font-size:15.5px;font-weight:700;color:var(--t1)}
+.help-close{width:30px;height:30px;border-radius:var(--r);font-size:22px;line-height:1;color:var(--t3);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.help-close:hover{background:var(--surface-2);color:var(--t1)}
+.help-body{padding:4px 20px 18px;overflow-y:auto}
+.help-item{display:flex;gap:12px;align-items:flex-start;padding:13px 0;border-bottom:1px solid var(--border)}
+.help-item:last-child{border-bottom:none}
+.help-ico{flex-shrink:0;width:32px;height:32px;border-radius:var(--r-lg);background:var(--blue-light);color:var(--blue);display:flex;align-items:center;justify-content:center}
+.help-ic-t{font-size:13.5px;font-weight:600;color:var(--t1);margin-bottom:3px}
+.help-ic-d{font-size:12.5px;line-height:1.5;color:var(--t3)}
+.help-ic-d strong{color:var(--t2);font-weight:600}
+.help-eg{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
+.help-eg button{padding:6px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-f);font-size:12px;color:var(--t2);cursor:pointer;transition:all var(--tx)}
+.help-eg button:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-light)}
+/* Hands-free mode active state on its toolbar button */
+.tool-btn.hf-on{color:var(--blue);background:var(--blue-light)}
+.tool-btn.hf-on svg{animation:hfPulse 1.4s ease infinite}
+@keyframes hfPulse{0%,100%{opacity:1}50%{opacity:.45}}
 
 /* Thinking */
 .thinking-row{display:flex;gap:12px;align-items:flex-start;margin-top:16px}
@@ -685,6 +721,9 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
     <svg id="iconSun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     <svg id="iconMoon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
   </button>
+  <button class="hdr-btn" id="helpBtn" title="Help — how to use this" aria-label="Help" onclick="openHelp()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  </button>
   <div class="hdr-sep" aria-hidden="true" style="margin-left:2px"></div>
   <button class="btn-new" id="btnNew" aria-label="New conversation">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -725,6 +764,7 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
 
 <!-- CONVERSATION -->
 <main class="conversation" role="main">
+  <div class="announce-bar" id="announceBar"></div>
   <div class="messages" id="messages" aria-live="polite" aria-relevant="additions"></div>
 </main>
 
@@ -754,6 +794,9 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
           </button>
           <button class="tool-btn" id="voiceBtn" title="Voice input" aria-label="Voice" onclick="toggleVoice()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          </button>
+          <button class="tool-btn" id="hfBtn" title="Hands-free mode — talk and listen, no clicks" aria-label="Hands-free mode" onclick="toggleHandsFree()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14v-3a9 9 0 0 1 18 0v3"/><path d="M21 14v2a3 3 0 0 1-3 3h-2"/><rect x="1" y="13" width="4" height="6" rx="1.5"/><rect x="19" y="13" width="4" height="6" rx="1.5"/></svg>
           </button>
           <div class="c-sep" aria-hidden="true"></div>
           <div class="sc-wrap" id="scWrap">
@@ -806,6 +849,60 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
   </div>
 </div>
 
+<div class="help-modal" id="helpModal" role="dialog" aria-modal="true" aria-label="Help — how to use this">
+  <div class="help-backdrop" onclick="closeHelp()"></div>
+  <div class="help-card">
+    <div class="help-head">
+      <h2>How to use the Roche Scientific AI</h2>
+      <button class="help-close" onclick="closeHelp()" aria-label="Close help">&times;</button>
+    </div>
+    <div class="help-body">
+      <div class="help-item">
+        <span class="help-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+        <div><div class="help-ic-t">What I can help with</div><div class="help-ic-d">Lab operations from your Roche documentation: onboarding &amp; access, booking instruments, cleaning &amp; decontamination, incident reporting, sample stock, ordering consumables, waste management and more. I point you to the right internal tool when an action lives there.</div></div>
+      </div>
+      <div class="help-item">
+        <span class="help-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></span>
+        <div><div class="help-ic-t">Ask by typing or speaking</div><div class="help-ic-d">Type your question, or tap the microphone to speak it — your voice is transcribed into the message box.</div></div>
+      </div>
+      <div class="help-item">
+        <span class="help-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg></span>
+        <div><div class="help-ic-t">Listen to answers</div><div class="help-ic-d">Tap <strong>Listen</strong> under any answer to have it read aloud — in the same language as the reply.</div></div>
+      </div>
+      <div class="help-item">
+        <span class="help-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>
+        <div><div class="help-ic-t">Trust the sources</div><div class="help-ic-d">Answers cite the documents they came from — click a citation to open the source in Google Drive. Each document is shown once.</div></div>
+      </div>
+      <div class="help-item">
+        <span class="help-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>
+        <div><div class="help-ic-t">Follow-up suggestions</div><div class="help-ic-d">After an answer, tap one of the suggested chips to keep going without typing.</div></div>
+      </div>
+      <div class="help-item">
+        <span class="help-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span>
+        <div><div class="help-ic-t">Your language</div><div class="help-ic-d">Ask in English, German, French or Italian — I detect it and reply in your language, translating from the source docs.</div></div>
+      </div>
+      <div class="help-item">
+        <span class="help-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14"/></svg></span>
+        <div><div class="help-ic-t">Honest about what it knows</div><div class="help-ic-d">I answer only from Roche docs. If something isn't covered I'll say so rather than guess, and I'll flag answers I'm less sure about so you can verify.</div></div>
+      </div>
+      <div class="help-item">
+        <span class="help-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+        <div><div class="help-ic-t">Your conversations are saved</div><div class="help-ic-d">Past chats live in the left sidebar — resume them on any device, search within them, or export them. Press <strong>Ctrl/&#8984;+K</strong> for quick commands.</div></div>
+      </div>
+      <div class="help-item">
+        <span class="help-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span>
+        <div><div class="help-ic-t">Try asking</div>
+          <div class="help-eg">
+            <button onclick="helpAsk('How do I book an instrument?')">How do I book an instrument?</button>
+            <button onclick="helpAsk('How do I report an incident?')">How do I report an incident?</button>
+            <button onclick="helpAsk('What is the onboarding process for new scientists?')">Onboarding process?</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ─── STATE ──────────────────────────────────────────────────── */
 const SK_SID   = 'roche_session_id';
@@ -813,6 +910,7 @@ const SK_MSGS  = 'roche_msgs_v4';
 const SK_DARK  = 'roche_dark';
 const SK_PIN   = 'roche_pinned';
 const SK_DRAFT = 'roche_draft';
+const SK_ANNOUNCE_X = 'roche_announce_dismissed';
 
 let sessionId  = null;
 let messages   = [];
@@ -873,6 +971,8 @@ async function bootApp() {
   // Admins get the feedback-analytics console link.
   document.getElementById('adminBtn').style.display =
     currentUser.role === 'admin' ? '' : 'none';
+
+  loadAnnouncement();   // show the current admin banner, if any
 
   // Desktop: dock the sidebar (ChatGPT-style) unless the user collapsed it.
   if (localStorage.getItem(SK_SB) !== '0') document.body.classList.add('docked');
@@ -1221,6 +1321,7 @@ function renderAi(m, stream = true) {
     bodyEl.innerHTML = parseMD(m.content, cits);
     badgeEl.innerHTML = evidenceBadge(cits.length);
     checkCollapse(bodyEl, cardEl);
+    if (m.lowConfidence) cardEl.insertAdjacentHTML('beforeend', lowConfHTML());
     if (cits.length) cardEl.insertAdjacentHTML('beforeend', citHTML(cits));
     buildActions(actsEl, m, row);
     buildFU(fuEl, m);
@@ -1293,6 +1394,7 @@ async function sendMessage(text) {
   text = (text || $input.value).trim();
   if (!text || busy) return;
   stopSpeak();                       // don't read over a new turn
+  hfResumeHandled = false;           // reset per turn (hands-free resume guard)
   document.getElementById('welcomeScreen')?.remove();
   busy = true; setSendState(true); histIdx = -1;
   $input.value = ''; autoResize($input);
@@ -1336,7 +1438,7 @@ async function sendMessage(text) {
         if (ev.event === 'meta') {
           hideThinking();
           aiMsg = { role:'ai', content:'', ts:Date.now(), type:ev.data.type,
-                    language:ev.data.language, citations:[], followups:[], live:true };
+                    language:ev.data.language, citations:[], followups:[], lowConfidence:false, live:true };
           messages.push(aiMsg);
           handles = renderAi(aiMsg, true);
         } else if (ev.event === 'token') {
@@ -1345,12 +1447,14 @@ async function sendMessage(text) {
           if (aiMsg) {
             aiMsg.citations = ev.data.citations || [];
             aiMsg.followups = ev.data.follow_ups || [];
+            aiMsg.lowConfidence = ev.data.low_confidence || false;
             aiMsg.turnId = ev.data.turn_id || null;
             delete aiMsg.live;
           }
           persist();
           handles?.finalize();
           loadConversations();   // pick up a server-set title for new chats
+          if (handsFree && aiMsg) hfOnAnswerComplete(aiMsg);  // read aloud + resume listening
           break outer;
         } else if (ev.event === 'error') {
           errCat = (ev.data && ev.data.category) || 'internal';
@@ -1386,6 +1490,9 @@ async function sendMessage(text) {
     streamCtrl = null;
     busy = false; setSendState(false);
     $send.disabled = !$input.value.trim();
+    // Hands-free: if the answer path didn't take over (e.g. an error), keep
+    // the conversation going by listening again.
+    if (handsFree && !hfResumeHandled) hfListen();
   }
 }
 
@@ -1555,6 +1662,13 @@ function buildFU(el, m) {
     </button>`).join('');
 }
 
+function lowConfHTML() {
+  return `<div class="low-conf" role="note" aria-label="Low confidence warning">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    <span><strong>Low confidence.</strong> I couldn't find a strong match in the documentation — please verify against the source before relying on this.</span>
+  </div>`;
+}
+
 function citHTML(cits) {
   const id = 'c' + Math.random().toString(36).slice(2,7);
   return `
@@ -1689,6 +1803,60 @@ function searchNav(e) {
 /* ─── DARK MODE ──────────────────────────────────────────────── */
 function toggleDark() { applyDark(document.documentElement.dataset.theme !== 'dark'); }
 
+/* ─── HELP / HOW-TO ──────────────────────────────────────────── */
+function openHelp()  { document.getElementById('helpModal')?.classList.add('open'); }
+function closeHelp() { document.getElementById('helpModal')?.classList.remove('open'); }
+function helpAsk(q)  { closeHelp(); sendMessage(q); }
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('helpModal')?.classList.contains('open')) closeHelp();
+});
+
+/* ─── ANNOUNCEMENTS (admin-published banner) ─────────────────── */
+async function loadAnnouncement() {
+  try {
+    const r = await fetch('/api/announcement');
+    if (r.ok) renderAnnounce(await r.json());
+  } catch {}
+}
+function renderAnnounce(a) {
+  const bar = document.getElementById('announceBar');
+  if (!bar) return;
+  const dismissed = localStorage.getItem(SK_ANNOUNCE_X);
+  if (!a || !a.message || (a.id && a.id === dismissed)) {
+    bar.classList.remove('show'); bar.innerHTML = ''; bar.dataset.id = '';
+    return;
+  }
+  bar.dataset.id = a.id || '';
+  bar.innerHTML = `<div class="announce-inner">
+    <span class="announce-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg></span>
+    <span class="announce-msg">${esc(a.message)}</span>
+    <button class="announce-x" onclick="dismissAnnounce()" aria-label="Dismiss announcement">&times;</button>
+  </div>`;
+  bar.classList.add('show');
+}
+function dismissAnnounce() {
+  const bar = document.getElementById('announceBar');
+  if (bar && bar.dataset.id) localStorage.setItem(SK_ANNOUNCE_X, bar.dataset.id);
+  bar?.classList.remove('show');
+}
+async function promptPublishAnnounce() {
+  const msg = prompt('Announcement to show all scientists (leave blank to take it down):', '');
+  if (msg === null) return;                 // cancelled
+  await publishAnnouncement(msg);
+}
+async function publishAnnouncement(message) {
+  try {
+    const r = await fetch('/api/announcement', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
+    });
+    if (!r.ok) { toast('Could not update the announcement.', 'amber'); return; }
+    localStorage.removeItem(SK_ANNOUNCE_X);   // so the publisher sees the new banner
+    await loadAnnouncement();
+    toast(message.trim() ? 'Announcement published to all scientists' : 'Announcement taken down', 'green');
+  } catch { toast('Could not update the announcement.', 'amber'); }
+}
+
 function applyDark(on) {
   document.documentElement.dataset.theme = on ? 'dark' : 'light';
   localStorage.setItem(SK_DARK, on ? '1' : '0');
@@ -1726,14 +1894,21 @@ const CMD_ITEMS = [
   { icon:_CI('<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>'), label:'Toggle dark mode',    desc:'Switch light / dark theme',      kbd:['⌘','D'], fn:() => { closeCmdK(); toggleDark(); } },
   { icon:_CI('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>'), label:'Search conversation', desc:'Find text in this session',      kbd:['⌘','F'], fn:() => { closeCmdK(); if(!document.getElementById('searchBar').classList.contains('open')) toggleSearch(); } },
   { icon:_CI('<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1Z"/>'), label:'View pinned responses',desc:'Show pinned messages',          kbd:[],        fn:() => { closeCmdK(); if(pinned.length) { document.getElementById('pinnedStrip').classList.add('open'); updateTopPad(); } } },
+  { icon:_CI('<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>'), label:'Publish announcement', desc:'Show a banner to all scientists (admin)', kbd:[], admin:true, fn:() => { closeCmdK(); promptPublishAnnounce(); } },
 ];
+
+// Command-palette items visible to the current user (admin-only items hidden
+// from regular scientists).
+function visibleCmds() {
+  return CMD_ITEMS.filter(c => !c.admin || currentUser?.role === 'admin');
+}
 
 let cmdFocusIdx = -1;
 
 function openCmdK() {
   document.getElementById('cmdpal').classList.add('open');
   document.getElementById('cmdInput').value = '';
-  renderCmds(CMD_ITEMS);
+  renderCmds(visibleCmds());
   setTimeout(() => document.getElementById('cmdInput').focus(), 50);
 }
 
@@ -1754,14 +1929,14 @@ function renderCmds(items) {
 }
 
 function filterCmds(q) {
-  const filtered = CMD_ITEMS.filter(c => c.label.toLowerCase().includes(q.toLowerCase()) || c.desc.toLowerCase().includes(q.toLowerCase()));
+  const filtered = visibleCmds().filter(c => c.label.toLowerCase().includes(q.toLowerCase()) || c.desc.toLowerCase().includes(q.toLowerCase()));
   renderCmds(filtered);
   cmdFocusIdx = -1;
 }
 
 function runCmd(i) {
   const q = document.getElementById('cmdInput').value;
-  const items = CMD_ITEMS.filter(c => c.label.toLowerCase().includes(q.toLowerCase()) || c.desc.toLowerCase().includes(q.toLowerCase()));
+  const items = visibleCmds().filter(c => c.label.toLowerCase().includes(q.toLowerCase()) || c.desc.toLowerCase().includes(q.toLowerCase()));
   items[i]?.fn();
 }
 
@@ -1915,6 +2090,175 @@ function toggleSpeak(ts) {
   speakingTs = ts;
   document.getElementById('tts' + ts)?.classList.add('speaking');
   _ttsLabel(ts, 'Stop');
+  window.speechSynthesis.speak(u);
+}
+
+/* ─── HANDS-FREE MODE (Alexa-style, no button clicks) ────────────
+   Continuous conversation: it listens, auto-sends when you stop talking
+   (silence detection via the Web Audio API), reads the answer aloud, then
+   listens again. Built on the same MediaRecorder + Whisper pipeline as the
+   mic button (the browser's speech-recognition API is unreliable in Edge /
+   corporate networks). Tune the constants below if it cuts off too early or
+   waits too long. */
+let handsFree = false;
+let hfStream = null, hfRecorder = null, hfChunks = [];
+let hfAudioCtx = null, hfAnalyser = null, hfSource = null, hfVadTimer = null;
+let hfSpoke = false, hfSilenceMs = 0, hfElapsedMs = 0, hfPrevPlaceholder = '';
+let hfNoise = 0.01, hfLevel = 0;   // adaptive noise floor + smoothed volume
+let hfResumeHandled = false;   // true once the answer path owns the resume
+const HF_SILENCE_END_MS = 1500;  // stop this long after you actually stop talking
+const HF_MIN_SPEECH_MS  = 350;   // ignore blips shorter than this
+const HF_MAX_UTTER_MS   = 20000; // hard cap on one utterance
+const HF_TICK_MS        = 80;
+const HF_LEVEL_SMOOTH   = 0.35;  // smoothing for the volume reading (0..1; higher = snappier)
+const HF_NOISE_ADAPT    = 0.04;  // how fast the background-noise estimate tracks the room
+const HF_SPEECH_RATIO   = 3.0;   // speech = volume above (noise floor x this)
+const HF_SPEECH_FLOOR   = 0.006; // absolute minimum volume that can ever count as speech
+
+function hfSupported() {
+  return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
+    && typeof MediaRecorder !== 'undefined'
+    && !!(window.AudioContext || window.webkitAudioContext);
+}
+
+async function toggleHandsFree() {
+  if (handsFree) { stopHandsFree(); return; }
+  if (!hfSupported()) {
+    toast('Hands-free needs microphone support (try Chrome or Edge).', 'amber');
+    return;
+  }
+  handsFree = true;
+  hfPrevPlaceholder = $input.placeholder;
+  document.getElementById('hfBtn')?.classList.add('hf-on');
+  toast('Hands-free on — just speak. Tap the headset again to stop.', 'green');
+  await hfListen();
+}
+
+function stopHandsFree() {
+  handsFree = false;
+  document.getElementById('hfBtn')?.classList.remove('hf-on');
+  hfTeardown();
+  stopSpeak();
+  if (hfPrevPlaceholder) $input.placeholder = hfPrevPlaceholder;
+}
+
+function hfStatus(text) {
+  if (handsFree && text) $input.placeholder = text;
+}
+
+async function hfListen() {
+  if (!handsFree) return;
+  stopSpeak();                       // never listen while we're talking
+  try {
+    hfStream = hfStream || await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (_) {
+    toast('Microphone blocked — allow mic access in your browser.', 'amber');
+    stopHandsFree();
+    return;
+  }
+  try {
+    hfAudioCtx = hfAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (hfAudioCtx.state === 'suspended') await hfAudioCtx.resume();
+    hfSource = hfAudioCtx.createMediaStreamSource(hfStream);
+    hfAnalyser = hfAudioCtx.createAnalyser();
+    hfAnalyser.fftSize = 1024;
+    hfSource.connect(hfAnalyser);
+    hfRecorder = new MediaRecorder(hfStream);
+  } catch (_) {
+    toast('Audio capture is not available here.', 'amber');
+    stopHandsFree();
+    return;
+  }
+
+  hfChunks = [];
+  hfRecorder.ondataavailable = e => { if (e.data.size) hfChunks.push(e.data); };
+  hfRecorder.onstop = () => hfFlush();
+  hfRecorder.start();
+
+  hfSpoke = false; hfSilenceMs = 0; hfElapsedMs = 0;
+  hfLevel = 0; hfNoise = 0.01;
+  const buf = new Float32Array(hfAnalyser.fftSize);
+  hfStatus('Listening… just speak');
+  hfVadTimer = setInterval(() => {
+    if (!handsFree || !hfAnalyser) return;
+    hfAnalyser.getFloatTimeDomainData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+    const rms = Math.sqrt(sum / buf.length);
+    // Smooth the reading so a single quiet frame mid-sentence doesn't cut us off.
+    hfLevel = HF_LEVEL_SMOOTH * rms + (1 - HF_LEVEL_SMOOTH) * hfLevel;
+    hfElapsedMs += HF_TICK_MS;
+    // Speech = clearly above the learned background-noise floor.
+    const speechAt = Math.max(HF_SPEECH_FLOOR, hfNoise * HF_SPEECH_RATIO);
+    if (hfLevel > speechAt) {
+      if (hfElapsedMs > HF_MIN_SPEECH_MS) hfSpoke = true;
+      hfSilenceMs = 0;
+    } else {
+      hfSilenceMs += HF_TICK_MS;
+      // Learn the room's quiet level only while it's actually quiet.
+      hfNoise = (1 - HF_NOISE_ADAPT) * hfNoise + HF_NOISE_ADAPT * hfLevel;
+    }
+    if ((hfSpoke && hfSilenceMs >= HF_SILENCE_END_MS) || hfElapsedMs >= HF_MAX_UTTER_MS) {
+      hfStopRecorder();
+    }
+  }, HF_TICK_MS);
+}
+
+function hfStopRecorder() {
+  if (hfVadTimer) { clearInterval(hfVadTimer); hfVadTimer = null; }
+  if (hfSource) { try { hfSource.disconnect(); } catch (_) {} hfSource = null; }
+  hfAnalyser = null;
+  if (hfRecorder && hfRecorder.state !== 'inactive') {
+    try { hfRecorder.stop(); } catch (_) {}   // -> onstop -> hfFlush()
+  }
+}
+
+function hfTeardown() {
+  if (hfVadTimer) { clearInterval(hfVadTimer); hfVadTimer = null; }
+  if (hfSource) { try { hfSource.disconnect(); } catch (_) {} hfSource = null; }
+  hfAnalyser = null;
+  if (hfRecorder && hfRecorder.state !== 'inactive') { try { hfRecorder.stop(); } catch (_) {} }
+  hfRecorder = null;
+  if (hfStream) { hfStream.getTracks().forEach(t => t.stop()); hfStream = null; }
+  if (hfAudioCtx) { hfAudioCtx.close().catch(() => {}); hfAudioCtx = null; }
+}
+
+async function hfFlush() {
+  if (!handsFree) return;
+  const spoke = hfSpoke;
+  const blob = new Blob(hfChunks, { type: (hfRecorder && hfRecorder.mimeType) || 'audio/webm' });
+  if (!spoke || !blob.size) { hfListen(); return; }   // nothing said — keep listening
+  hfStatus('Thinking…');
+  const text = await hfTranscribe(blob);
+  if (!handsFree) return;
+  if (!text) { hfListen(); return; }                  // unclear — listen again
+  // Send it; the stream 'done' handler calls hfOnAnswerComplete to read the
+  // reply aloud and then resume listening.
+  sendMessage(text);
+}
+
+async function hfTranscribe(blob) {
+  try {
+    const ext = (blob.type.split('/')[1] || 'webm').split(';')[0];
+    const fd = new FormData();
+    fd.append('audio', blob, 'recording.' + ext);
+    const res = await fetch('/api/transcribe', { method: 'POST', body: fd });
+    if (!res.ok) return '';
+    return ((await res.json()).text || '').trim();
+  } catch (_) { return ''; }
+}
+
+function hfOnAnswerComplete(m) {
+  if (!handsFree) return;
+  hfResumeHandled = true;            // this path owns resuming the listen loop
+  const text = ttsStrip(m && m.content);
+  const resume = () => { if (handsFree) hfListen(); };
+  if (!text || !('speechSynthesis' in window)) { resume(); return; }
+  hfStatus('Speaking…');
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = TTS_LANG[m.language] || 'en-US';
+  u.onend = resume;
+  u.onerror = resume;
   window.speechSynthesis.speak(u);
 }
 

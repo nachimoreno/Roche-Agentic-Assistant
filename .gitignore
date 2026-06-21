@@ -23,3 +23,7 @@ logs/
 # Local dev server stdout/stderr captures
 server.out.log
 server.err.log
+.run_server.out
+.run_server.err
+.run_link_test.out
+.run_link_test.err

@@ -22,6 +22,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session as DbSession, select
 
 from db import (
+    Announcement,
     FeedbackAttribution,
     FeedbackEntry,
     Session,
@@ -99,6 +100,66 @@ class UserRepository:
             db.refresh(user)
         logger.info("user.role.set", extra={"user_id": str(id), "role": role})
         return user
+
+
+# ---------------------------------------------------------------------------
+# AnnouncementRepository
+# ---------------------------------------------------------------------------
+
+class AnnouncementRepository:
+    """Stores admin-published banner messages; one active at a time."""
+
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+
+    def get_active(self) -> Optional[Announcement]:
+        with DbSession(self._engine) as db:
+            stmt = (
+                select(Announcement)
+                .where(
+                    Announcement.active == True,  # noqa: E712
+                    Announcement.deleted_at.is_(None),  # type: ignore[union-attr]
+                )
+                .order_by(Announcement.created_at.desc())  # type: ignore[union-attr]
+            )
+            return db.exec(stmt).first()
+
+    def _deactivate_all(self, db: DbSession) -> None:
+        rows = db.exec(
+            select(Announcement).where(
+                Announcement.active == True,  # noqa: E712
+                Announcement.deleted_at.is_(None),  # type: ignore[union-attr]
+            )
+        ).all()
+        for row in rows:
+            row.active = False
+            db.add(row)
+
+    def publish(
+        self,
+        message: str,
+        *,
+        created_by: Optional[str] = None,
+        tenant_id: Optional[UUID] = None,
+    ) -> Announcement:
+        """Deactivate any current banner, then publish a new active one."""
+        ann = Announcement(
+            message=message, created_by=created_by, tenant_id=tenant_id
+        )
+        with DbSession(self._engine) as db:
+            self._deactivate_all(db)
+            db.add(ann)
+            db.commit()
+            db.refresh(ann)
+        logger.info("announcement.published", extra={"id": str(ann.id)})
+        return ann
+
+    def clear(self) -> None:
+        """Take down the current banner (deactivate all)."""
+        with DbSession(self._engine) as db:
+            self._deactivate_all(db)
+            db.commit()
+        logger.info("announcement.cleared")
 
 
 # ---------------------------------------------------------------------------

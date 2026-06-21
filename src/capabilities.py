@@ -47,7 +47,7 @@ class Capabilities:
 # can-do; ServiceNow incident creation is not built yet, so it stays in
 # cannot-do until the ServiceNow skill lands.
 CAPABILITIES = Capabilities(
-    as_of="2026-06-17",
+    as_of="2026-06-21",
     can_do=(
         "Answer operational questions grounded in internal lab documentation "
         "ingested from the team's Google Drive — onboarding and access, "
@@ -57,6 +57,12 @@ CAPABILITIES = Capabilities(
         "management, lab sharing, campus and facilities, and virtual session "
         "troubleshooting. You cite the document and section each answer comes "
         "from.",
+        "Explain how scientists work with you: they can type or tap the "
+        "microphone to speak a question, tap \"Listen\" under an answer to "
+        "hear it read aloud, click a citation to open its source document, and "
+        "tap a suggested follow-up to continue. A Help (?) button in the top "
+        "bar explains all of this. When asked how to use you or a specific "
+        "feature, explain it from this.",
         "Point scientists to the right internal application when the action "
         "lives there — you explain where to go, but do not act inside that app.",
         "Capture feedback for the IT and documentation teams and detect its "

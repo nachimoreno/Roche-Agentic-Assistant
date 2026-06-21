@@ -29,7 +29,12 @@ from auth import get_current_user
 from conversation_layer import AnalysisResult
 from db import User, create_all, make_engine
 from orchestrator import Response, StreamDone, StreamMeta, StreamToken
-from repositories import FeedbackRepository, SessionRepository, UserRepository
+from repositories import (
+    AnnouncementRepository,
+    FeedbackRepository,
+    SessionRepository,
+    UserRepository,
+)
 
 # A fixed authenticated user for the HTTP-surface tests (auth is overridden,
 # not exercised here — see test_auth.py / test_sessions.py for the real flow).
@@ -88,6 +93,7 @@ def client(tmp_path):
     api.app.state.sessions = SessionRepository(engine)
     api.app.state.users = UserRepository(engine)
     api.app.state.feedback = FeedbackRepository(engine)
+    api.app.state.announcements = AnnouncementRepository(engine)
     api.app.dependency_overrides[get_current_user] = lambda: _FAKE_USER
     try:
         yield TestClient(api.app)
@@ -629,6 +635,40 @@ def test_analytics_rejects_bad_dimension(client):
     _register(client, "it-admin2@roche.com")
     _promote_current(client, "it-admin2@roche.com")
     assert client.get("/api/analytics/hotspots?dimension=user").status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Announcements
+# ---------------------------------------------------------------------------
+
+def test_announcement_empty_when_none(client):
+    assert client.get("/api/announcement").json() == {"id": None, "message": None}
+
+
+def test_admin_publishes_and_users_see_announcement(client):
+    _register(client, "ann-admin@roche.com")
+    _promote_current(client, "ann-admin@roche.com")
+    pub = client.put("/api/announcement", json={"message": "Lab 3 closed Friday."})
+    assert pub.status_code == 200 and pub.json()["message"] == "Lab 3 closed Friday."
+    got = client.get("/api/announcement").json()
+    assert got["message"] == "Lab 3 closed Friday." and got["id"]
+
+
+def test_regular_user_cannot_publish_announcement(client):
+    _register(client, "ann-user@roche.com")            # not promoted
+    r = client.put("/api/announcement", json={"message": "not an admin"})
+    assert r.status_code == 404                          # surface hidden from non-admins
+    assert client.get("/api/announcement").json()["message"] is None
+
+
+def test_blank_message_takes_down_announcement(client):
+    _register(client, "ann-admin2@roche.com")
+    _promote_current(client, "ann-admin2@roche.com")
+    client.put("/api/announcement", json={"message": "Temporary notice"})
+    assert client.get("/api/announcement").json()["message"] == "Temporary notice"
+    down = client.put("/api/announcement", json={"message": "   "})
+    assert down.status_code == 200 and down.json()["message"] is None
+    assert client.get("/api/announcement").json()["message"] is None
 
 
 def test_register_never_accepts_role(client):

@@ -46,6 +46,14 @@ def test_question_classification(layer, message, expected_language):
     assert result.emotion is None
 
 
+def test_spell_correction_fixes_typos(layer):
+    # Heavy typos should be corrected so retrieval gets a clean query.
+    result = layer.analyze("How do I repot an incidnet?")
+    assert result.corrected_query
+    low = result.corrected_query.lower()
+    assert "report" in low and "incident" in low
+
+
 # ---------------------------------------------------------------------------
 # Feedback — language + type + emotion
 # ---------------------------------------------------------------------------

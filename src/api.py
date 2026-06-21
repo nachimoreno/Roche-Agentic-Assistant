@@ -44,6 +44,7 @@ from logging_setup import setup_logging
 from main import build_assistant, build_drive_source, build_engine
 from orchestrator import Assistant, StreamDone, StreamMeta, StreamToken
 from repositories import (
+    AnnouncementRepository,
     EmailTakenError,
     FeedbackRepository,
     SessionRepository,
@@ -116,6 +117,7 @@ async def lifespan(app: FastAPI):
     app.state.users = UserRepository(engine)
     app.state.sessions = SessionRepository(engine)
     app.state.feedback = FeedbackRepository(engine)
+    app.state.announcements = AnnouncementRepository(engine)
     # Keep the /admin analytics dashboard demoable on any fresh DB: seed a
     # synthetic feedback dataset once if the demo tenant is empty (no-op
     # otherwise). Failures here never block startup (see ensure_demo_feedback).
@@ -199,6 +201,7 @@ class ChatResponse(BaseModel):
     citations: list[CitationOut]
     turn_id: Optional[str] = None      # the assistant turn, for rating
     follow_ups: list[str] = []         # suggested next questions (chips)
+    low_confidence: bool = False       # weak grounding -> show a verify badge
 
 
 class SessionItemOut(BaseModel):
@@ -258,6 +261,15 @@ def _user_out(user: User) -> UserOut:
         display_name=user.display_name,
         role=user.role or "user",
     )
+
+
+class AnnouncementOut(BaseModel):
+    id: Optional[str] = None           # null id + null message means "no banner"
+    message: Optional[str] = None
+
+
+class PublishAnnouncementRequest(BaseModel):
+    message: str                       # empty/blank message takes the banner down
 
 
 def _iso_utc(dt: datetime) -> str:
@@ -343,6 +355,35 @@ def logout(request: Request):
 @app.get("/api/auth/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user)):
     return _user_out(user)
+
+
+# ---------------------------------------------------------------------------
+# Announcements — an admin publishes a banner shown to all scientists
+# ---------------------------------------------------------------------------
+
+@app.get("/api/announcement", response_model=AnnouncementOut)
+def get_announcement(request: Request, user: User = Depends(get_current_user)):
+    """The current banner (or an empty payload when none is active)."""
+    ann = request.app.state.announcements.get_active()
+    if ann is None:
+        return AnnouncementOut()
+    return AnnouncementOut(id=str(ann.id), message=ann.message)
+
+
+@app.put("/api/announcement", response_model=AnnouncementOut)
+def publish_announcement(
+    body: PublishAnnouncementRequest,
+    request: Request,
+    user: User = Depends(require_admin),
+):
+    """Publish (or, with a blank message, take down) the banner. Admins only."""
+    message = body.message.strip()
+    repo = request.app.state.announcements
+    if not message:
+        repo.clear()
+        return AnnouncementOut()
+    ann = repo.publish(message, created_by=user.email)
+    return AnnouncementOut(id=str(ann.id), message=ann.message)
 
 
 # ---------------------------------------------------------------------------
@@ -565,6 +606,7 @@ def chat(
         ],
         turn_id=str(resp.turn_id) if resp.turn_id else None,
         follow_ups=resp.follow_ups,
+        low_confidence=resp.low_confidence,
     )
 
 
@@ -627,6 +669,7 @@ def chat_stream(
                         ],
                         "turn_id": str(ev.turn_id) if ev.turn_id else None,
                         "follow_ups": ev.follow_ups,
+                        "low_confidence": ev.low_confidence,
                     })
         except Exception as exc:
             category, detail = _error_category(exc)
