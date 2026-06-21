@@ -157,7 +157,7 @@ The MVP is built so promotion to production is incremental, not a rewrite:
 
 **Built:** Q&A with hybrid (dense + BM25) RAG, Google Drive ingestion, multilingual responses, question/feedback classification, sentiment detection, per-user accounts, persisted server-side sessions + chat history, FastAPI streaming web UI + desktop launcher, schema-first SQL persistence, CLI demo.
 
-**Planned next:** ServiceNow incident creation, SharePoint source (migration from Drive), macro-analytics dashboards, public-web search fallback.
+**Planned next:** ServiceNow incident creation, SharePoint source (migration from Drive), macro-analytics dashboards, public-web search fallback, multi-tenancy (assign each user a `tenant_id` at registration, then scope announcements / feedback / sessions by it — the `tenant_id` column already exists on every table, so this is wiring rather than a groups system; a flat tenant-per-user covers per-site banners, with a groups abstraction needed only to target sub-segments).
 
 **Out of scope:** Full ServiceNow workflow (routing, assignment, email follow-up), direct integration with every Roche internal app, real confidential Roche data.
 
