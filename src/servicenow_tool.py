@@ -45,7 +45,28 @@ logger = logging.getLogger(__name__)
 # Toggle between mock and real ServiceNow.
 # Set SERVICENOW_USE_MOCK=false in .env once your real dev instance is ready —
 # everything else (tool definition, agent wiring, tests) stays the same.
+#
+# This module-level default is the back-compat path used when no explicit
+# ServiceNowConfig is passed (e.g. the unit tests). The running app injects a
+# ServiceNowConfig built from Settings instead, so config flows through the
+# normal settings seam rather than being read from os.environ here.
 USE_MOCK = os.getenv("SERVICENOW_USE_MOCK", "true").lower() == "true"
+
+
+@dataclass
+class ServiceNowConfig:
+    """Resolved ServiceNow connection config, injected by the caller.
+
+    Built from `Settings` in the composition root and passed into
+    `create_servicenow_incident`. When it is absent the function falls back to
+    the module-level `USE_MOCK` toggle and env-var credentials, preserving the
+    original standalone behaviour the unit tests rely on.
+    """
+
+    use_mock: bool = True
+    instance: str = ""
+    username: str = ""
+    password: str = ""
 
 # ---------------------------------------------------------------------------
 # Incident dataclass — what we collect from the scientist
@@ -149,11 +170,13 @@ def create_servicenow_incident(
     description:       str = "",
     category:          str = "hardware",
     urgency:           str = "3",
+    *,
+    config: Optional[ServiceNowConfig] = None,
 ) -> str:
     """
     Create a ServiceNow incident from the agent.
 
-    This is the function registered as a tool in agent.py.
+    This is the function the orchestrator calls when an incident is confirmed.
     Returns a human-readable confirmation string for the scientist.
 
     Parameters
@@ -166,14 +189,23 @@ def create_servicenow_incident(
         "hardware" | "software" | "access" | "network"
     urgency : str
         "1" = High, "2" = Medium, "3" = Low
+    config : ServiceNowConfig, optional
+        Injected connection config. When omitted, falls back to the module-level
+        `USE_MOCK` toggle and env-var credentials (the standalone/test path).
 
     Returns
     -------
     str
         Confirmation message with ticket number, or error message.
     """
+    use_mock = config.use_mock if config is not None else USE_MOCK
     try:
-        client = MockServiceNowClient() if USE_MOCK else ServiceNowClient()
+        if use_mock:
+            client = MockServiceNowClient()
+        elif config is not None:
+            client = ServiceNowClient(config.instance, config.username, config.password)
+        else:
+            client = ServiceNowClient()
         payload = IncidentPayload(
             short_description = short_description,
             description       = description,
@@ -183,10 +215,8 @@ def create_servicenow_incident(
         result = client.create_incident(payload)
 
         number  = result.get("number", "unknown")
-        sys_id  = result.get("sys_id", "")
-        state   = result.get("state", {})
 
-        mode_note = " _(simulated — demo mode)_" if USE_MOCK else ""
+        mode_note = " _(simulated — demo mode)_" if use_mock else ""
 
         return (
             f"✅ Incident created successfully.{mode_note}\n"
@@ -226,11 +256,14 @@ def create_servicenow_incident(
 
 
 # ---------------------------------------------------------------------------
-# Tool definition for the agent (matches your repo's tool pattern)
+# Tool definition (OpenAI/Anthropic function-calling schema)
 # ---------------------------------------------------------------------------
 
-# This is the dict you register in agent.py alongside your existing tools.
-# Look in agent.py for where tools are defined and add this entry.
+# This repo's GroqClient does not use native function-calling — incidents are
+# detected by the conversation classifier ("incident" type) and routed through
+# incident_intake.IncidentIntake, which extracts these same fields. This schema
+# is kept as the canonical parameter contract (and for a future provider that
+# does support native tool-calling); incident_intake mirrors its field set.
 
 SERVICENOW_TOOL_DEFINITION = {
     "type": "function",

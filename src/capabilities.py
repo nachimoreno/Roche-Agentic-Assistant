@@ -43,12 +43,17 @@ class Capabilities:
 
 
 # Reflects code reality as of this date. Drive ingestion is built
-# (google_drive_source.py, default document_source="google_drive"), so it is a
-# can-do; ServiceNow incident creation is not built yet, so it stays in
-# cannot-do until the ServiceNow skill lands.
+# (google_drive_source.py, default document_source="google_drive") and the
+# ServiceNow incident skill is now wired (incident_intake.py + servicenow_tool.py,
+# routed by the orchestrator), so both are can-dos.
 CAPABILITIES = Capabilities(
-    as_of="2026-06-21",
+    as_of="2026-06-22",
     can_do=(
+        "Open a ServiceNow IT incident directly from the conversation when a "
+        "scientist reports a broken, failing, or inaccessible device, "
+        "instrument, system, application, or access issue. You confirm the "
+        "details (summary, category, urgency) before filing, then create the "
+        "ticket and give back its incident number.",
         "Answer operational questions grounded in internal lab documentation "
         "ingested from the team's Google Drive — onboarding and access, "
         "navigating internal applications, incident reporting, instrument "
@@ -73,8 +78,6 @@ CAPABILITIES = Capabilities(
         "the scientist's account, not a single machine.",
     ),
     cannot_do=(
-        "Create ServiceNow incidents directly from the conversation — that is "
-        "planned; for now, explain the manual steps to open one.",
         "Perform actions inside other internal Roche applications on a "
         "scientist's behalf, such as booking an instrument or reserving stock.",
         "Look things up on the public web — answers come only from the "

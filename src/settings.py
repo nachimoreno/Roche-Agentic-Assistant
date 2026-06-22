@@ -122,6 +122,19 @@ class Settings(BaseSettings):
             e.strip().lower() for e in self.admin_emails.split(",") if e.strip()
         }
 
+    # ---- ServiceNow (incident creation) -------------------------------
+    # The assistant can open ServiceNow IT incidents from the conversation.
+    # Until a real developer instance (PDI) is provisioned, it runs against an
+    # in-memory mock that returns realistic INC numbers — so the feature is
+    # fully demoable with no credentials. Flip servicenow_use_mock to false and
+    # set the three connection fields once a real instance is available; nothing
+    # else changes. Read here (not in servicenow_tool) so config stays in one
+    # place; main.build_assistant passes these through as a ServiceNowConfig.
+    servicenow_use_mock: bool = True
+    servicenow_instance: str = ""      # e.g. https://devXXXXXX.service-now.com
+    servicenow_username: str = ""
+    servicenow_password: str = ""
+
     # ---- Observability ------------------------------------------------
     log_level: str = "INFO"
     log_format: Literal["json", "text"] = "text"

@@ -65,7 +65,10 @@ class MockServiceNowClient:
         time.sleep(0.2)  # simulate network latency for a more realistic demo
 
         MockServiceNowClient._ticket_counter += 1
-        number = f"INC00{MockServiceNowClient._ticket_counter}"
+        # Zero-pad to ServiceNow's 7-digit incident format (INC0010001). Padding
+        # explicitly keeps the width correct once the counter passes 99999,
+        # which a hardcoded "INC00" prefix would silently widen to 8 digits.
+        number = f"INC{MockServiceNowClient._ticket_counter:07d}"
         sys_id = str(uuid.uuid4()).replace("-", "")
 
         record = {

@@ -5,7 +5,7 @@ Self-knowledge constant — content and rendering contract.
 is never ingested or retrieved, so these tests guard the content directly: the
 two sections render, the supported languages are named, Drive ingestion reads
 as a current capability (the bug doc 00 used to contradict), and ServiceNow
-incident creation is described as not-yet rather than claimed.
+incident creation reads as a current capability now that the skill is wired.
 """
 
 from __future__ import annotations
@@ -40,7 +40,10 @@ def test_drive_ingestion_is_a_current_capability():
     assert "Google Drive" not in cannot_part
 
 
-def test_servicenow_is_not_yet_and_never_claimed():
+def test_servicenow_is_a_current_capability():
+    # The incident skill is wired (incident_intake.py + servicenow_tool.py,
+    # routed by the orchestrator), so ServiceNow must read as can-do — the
+    # mirror of the Drive case above.
     can_part, cannot_part = _split(CAPABILITIES.as_prompt_block())
-    assert "ServiceNow" in cannot_part
-    assert "ServiceNow" not in can_part
+    assert "ServiceNow" in can_part
+    assert "ServiceNow" not in cannot_part

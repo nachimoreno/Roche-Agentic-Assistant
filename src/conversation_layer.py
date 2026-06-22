@@ -5,7 +5,7 @@ Conversation Layer for the Roche Scientist Assistant pipeline.
 
 Responsibilities:
   - Detect the language of an incoming scientist message
-  - Classify the message as "question" or "feedback"
+  - Classify the message as "question", "feedback", or "incident"
   - Detect the dominant emotion when the message is feedback
 
 Output is a Pydantic `AnalysisResult` — the single source of truth for
@@ -54,7 +54,7 @@ Language = Literal[
     "other",
 ]
 
-MessageType = Literal["question", "feedback"]
+MessageType = Literal["question", "feedback", "incident"]
 
 Emotion = Literal[
     "frustrated",
@@ -107,19 +107,36 @@ structured conversational analysis engine inside a larger AI architecture.
 For every incoming user message, you must:
 
 1. Detect the primary language of the message.
-2. Classify the message as "question" or "feedback".
+2. Classify the message as "question", "feedback", or "incident".
 3. If the type is "feedback", detect the dominant emotion.
 
 ## MESSAGE TYPE CLASSIFICATION
 
 A message is a "question" if the user asks for information, requests
 guidance, asks where or how to do something, asks operational or
-scientific questions, or seeks clarification.
+scientific questions, or seeks clarification. This INCLUDES asking how
+to report a problem or how to open a ticket ("how do I report a broken
+centrifuge?") — that is a request for information, not an incident.
 
 A message is "feedback" if the user expresses an opinion, reports
 frustration or confusion, comments on a tool / process / workflow /
 document, praises or criticizes something, suggests improvements,
 reports usability issues, or expresses emotions about an experience.
+
+A message is an "incident" if the user is reporting an actual IT problem
+they want acted on — a device, instrument, system, application, network,
+or access issue that is broken, failing, unresponsive, or inaccessible
+and that should be logged as an IT support ticket. Examples: "the
+centrifuge in Lab 4B isn't turning on", "I can't log into BioLIMS",
+"the -80 freezer is alarming". Choose "incident" over "question" when the
+user is describing their own broken/blocked situation rather than asking
+for general information.
+
+If the assistant's previous turn offered to open a ServiceNow incident or
+asked the user to confirm filing one, and the latest message confirms
+("yes", "go ahead", "please file it"), adjusts the details, or declines
+("no", "don't bother"), classify the latest message as "incident" — it
+continues the incident-reporting flow.
 
 If uncertain between "question" and "feedback", classify as "feedback"
 only if emotional or opinionated language is present.

@@ -24,12 +24,14 @@ from db import create_all, make_engine, new_id
 from document_source import CompositeSource, DocumentSource, LocalMarkdownSource
 from google_drive_source import GoogleDriveSource
 from embeddings import FastEmbedProvider
+from incident_intake import IncidentIntake
 from lexical_index import BM25Index
 from llm import GroqClient
 from logging_setup import setup_logging
 from orchestrator import Assistant
 from repositories import FeedbackRepository, SessionRepository
 from retrieval import DocumentStore
+from servicenow_tool import ServiceNowConfig
 from settings import Settings
 from vector_store import ChromaVectorStore
 
@@ -143,12 +145,22 @@ def build_assistant(settings: Settings, engine: Optional[Engine] = None) -> Assi
     feedback_repo = FeedbackRepository(engine)
     attribution = AttributionResolver(docs)
 
+    incident_intake = IncidentIntake(llm=llm)
+    servicenow_config = ServiceNowConfig(
+        use_mock=settings.servicenow_use_mock,
+        instance=settings.servicenow_instance,
+        username=settings.servicenow_username,
+        password=settings.servicenow_password,
+    )
+
     return Assistant(
         conversation_layer=cl,
         rag_agent=agent,
         session_repo=session_repo,
         feedback_repo=feedback_repo,
         attribution=attribution,
+        incident_intake=incident_intake,
+        servicenow_config=servicenow_config,
     )
 
 

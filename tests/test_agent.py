@@ -283,11 +283,15 @@ def test_answer_injects_capabilities_even_with_empty_context():
     agent.answer("what can you do?", language="english")
     system = llm.last["system"]
     assert "(no relevant documentation found)" in system   # context truly empty
-    assert CAPABILITIES.as_prompt_block() in system        # but self-knowledge present
-    # ServiceNow is described as not-yet, never advertised as a capability.
-    can_part, _, cannot_part = system.partition("What you cannot do yet:")
-    assert "ServiceNow" in cannot_part
-    assert "ServiceNow" not in can_part
+    block = CAPABILITIES.as_prompt_block()
+    assert block in system                                 # but self-knowledge present
+    # The ServiceNow incident skill is wired, so within the capability block it
+    # reads as a current capability. Partition the block itself, not the whole
+    # system prompt — the operational guidance below also names ServiceNow (as a
+    # place to point scientists), which is unrelated to the can/cannot split.
+    can_part, _, cannot_part = block.partition("What you cannot do yet:")
+    assert "ServiceNow" in can_part
+    assert "ServiceNow" not in cannot_part
 
 
 def test_answer_stream_injects_capabilities_even_with_empty_context():

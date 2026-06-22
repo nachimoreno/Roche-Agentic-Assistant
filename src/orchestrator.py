@@ -32,8 +32,10 @@ from agent import (
 from attribution import AttributionResolver
 from conversation_layer import AnalysisResult, ConversationLayer
 from db import FeedbackEntry
+from incident_intake import IncidentDecision, IncidentIntake
 from logging_setup import new_correlation_id
 from repositories import FeedbackRepository, SessionRepository
+from servicenow_tool import ServiceNowConfig, create_servicenow_incident
 
 
 logger = logging.getLogger(__name__)
@@ -121,6 +123,8 @@ class Assistant:
         session_repo: SessionRepository,
         feedback_repo: FeedbackRepository,
         attribution: Optional[AttributionResolver] = None,
+        incident_intake: Optional[IncidentIntake] = None,
+        servicenow_config: Optional[ServiceNowConfig] = None,
         history_turns: int = 10,
     ) -> None:
         self._cl = conversation_layer
@@ -130,6 +134,11 @@ class Assistant:
         # Resolves which doc/process a piece of feedback concerns. Optional so
         # the orchestrator still works (attribution simply skipped) if unwired.
         self._attribution = attribution
+        # ServiceNow incident skill. Optional so the orchestrator still works
+        # without it — an "incident"-classified turn then falls through to the
+        # normal RAG answer (which explains the manual steps).
+        self._incident = incident_intake
+        self._sn_config = servicenow_config
         self._history_turns = history_turns
 
     def _history_for(self, session_id: UUID) -> list[AgentTurn]:
@@ -166,6 +175,27 @@ class Assistant:
         self._feedback.replace_attributions(
             feedback_id, result.method, result.rows, tenant_id=tenant_id
         )
+
+    # ------------------------------------------------------------------
+    # Incident handling
+    # ------------------------------------------------------------------
+
+    def _render_incident(self, decision: IncidentDecision) -> str:
+        """Turn an intake decision into the assistant's reply text.
+
+        "file" actually creates the ServiceNow ticket (the tool returns the
+        confirmation); "clarify"/"cancel" surface the model's reply unchanged.
+        "not_incident" never reaches here — the caller falls back to RAG.
+        """
+        if decision.action == "file":
+            return create_servicenow_incident(
+                decision.short_description,
+                description=decision.description,
+                category=decision.category,
+                urgency=decision.urgency,
+                config=self._sn_config,
+            )
+        return decision.reply
 
     def handle(
         self,
@@ -225,8 +255,32 @@ class Assistant:
                     text=ack, analysis=analysis, citations=[], turn_id=ack_turn.id
                 )
 
-        # Question path — also handles feedback that embeds a question. Reuse
-        # the history already loaded for classification.
+        # Incident path — the scientist is reporting an IT problem to log. The
+        # intake step gates filing behind a confirmation; "not_incident" means
+        # the classifier over-fired, so fall through to the normal answer.
+        if analysis.type == "incident" and self._incident is not None:
+            decision = self._incident.decide(
+                message, history=history, language=analysis.language
+            )
+            if decision.action != "not_incident":
+                text = self._render_incident(decision)
+                incident_turn = self._sessions.append_turn(
+                    session_id,
+                    role="assistant",
+                    content=text,
+                    language=analysis.language,
+                    tenant_id=tenant_id,
+                )
+                return Response(
+                    text=text,
+                    analysis=analysis,
+                    citations=[],
+                    turn_id=incident_turn.id,
+                )
+
+        # Question path — also handles feedback that embeds a question, and an
+        # incident turn the intake declined to act on. Reuse the history already
+        # loaded for classification.
         answer: AnswerResult = self._agent.answer(
             message=message,
             language=analysis.language,
@@ -317,6 +371,26 @@ class Assistant:
                     tenant_id=tenant_id,
                 )
                 yield StreamDone(text=ack, citations=[], turn_id=ack_turn.id)
+                return
+
+        # Incident path (see `handle`). The reply is computed whole (a tool call
+        # or a short confirmation question), so it streams as one token then the
+        # terminal event — same shape as the feedback acknowledgement above.
+        if analysis.type == "incident" and self._incident is not None:
+            decision = self._incident.decide(
+                message, history=history, language=analysis.language
+            )
+            if decision.action != "not_incident":
+                text = self._render_incident(decision)
+                yield StreamToken(text=text)
+                incident_turn = self._sessions.append_turn(
+                    session_id,
+                    role="assistant",
+                    content=text,
+                    language=analysis.language,
+                    tenant_id=tenant_id,
+                )
+                yield StreamDone(text=text, citations=[], turn_id=incident_turn.id)
                 return
 
         full_text = ""
