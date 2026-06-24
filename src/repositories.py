@@ -524,7 +524,7 @@ class FeedbackRepository:
 # normalised, so cosine == dot product. 0.72 is a deliberately conservative
 # default (paraphrases of the same question typically score > 0.8; unrelated
 # lab topics sit well below); tune via QuestionGapRepository(similarity=...).
-_GAP_CLUSTER_SIMILARITY = 0.72
+_GAP_CLUSTER_SIMILARITY = 0.6
 
 
 class _Embedder(Protocol):
