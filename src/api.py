@@ -47,6 +47,7 @@ from repositories import (
     AnnouncementRepository,
     EmailTakenError,
     FeedbackRepository,
+    QuestionGapRepository,
     SessionRepository,
     UserRepository,
 )
@@ -118,6 +119,10 @@ async def lifespan(app: FastAPI):
     app.state.sessions = SessionRepository(engine)
     app.state.feedback = FeedbackRepository(engine)
     app.state.announcements = AnnouncementRepository(engine)
+    # Read-only view of the documentation-gap log for the analytics dashboard.
+    # No embedder needed here — clustering happens on write (in the assistant's
+    # own repo); these endpoints only read the already-clustered rows.
+    app.state.question_gaps = QuestionGapRepository(engine)
     # Keep the /admin analytics dashboard demoable on any fresh DB: seed a
     # synthetic feedback dataset once if the demo tenant is empty (no-op
     # otherwise). Failures here never block startup (see ensure_demo_feedback).
@@ -786,6 +791,28 @@ def analytics_trend(
 ):
     feedback: FeedbackRepository = request.app.state.feedback
     return feedback.trend(since=_since(days), tenant_id=user.tenant_id)
+
+
+@app.get("/api/analytics/gaps")
+def analytics_gaps(
+    request: Request,
+    days: Optional[int] = None,
+    limit: int = 20,
+    user: User = Depends(require_admin),
+):
+    """Documentation gaps: questions the assistant declined or answered weakly,
+    grouped into topic clusters (biggest first). Surfaces what scientists need
+    that the corpus doesn't cover — invisible to the feedback-only analytics."""
+    gaps: QuestionGapRepository = request.app.state.question_gaps
+    since = _since(days)
+    return {
+        "total": gaps.count(since=since, tenant_id=user.tenant_id),
+        "clusters": gaps.clusters(
+            since=since,
+            tenant_id=user.tenant_id,
+            limit=max(1, min(limit, 50)),
+        ),
+    }
 
 
 if __name__ == "__main__":
