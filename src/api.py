@@ -426,6 +426,106 @@ async def transcribe(
 
 
 # ---------------------------------------------------------------------------
+# Knowledge base — add a document to the Drive corpus and ingest it live
+# ---------------------------------------------------------------------------
+
+_MAX_DOC_BYTES = 20 * 1024 * 1024
+_ALLOWED_DOC_EXT = {".pdf", ".docx", ".txt", ".md"}
+
+
+def _drive_error_hint(exc: Exception) -> str:
+    """Turn a raw Drive API error into an actionable message for the user."""
+    msg = str(exc).lower()
+    if "storagequota" in msg or "do not have storage quota" in msg:
+        return (
+            "The service account has no storage quota, so it can't own files in "
+            "a normal Drive folder. Move the target folder into a Shared Drive "
+            "(or grant a real user's OAuth credentials) and try again."
+        )
+    if "insufficient" in msg or "permission" in msg or "forbidden" in msg or "403" in msg:
+        return (
+            "The service account isn't allowed to write to this folder. Share the "
+            "Drive folder with the service-account email as an Editor and retry."
+        )
+    return "Could not upload to Google Drive. See server logs for details."
+
+
+@app.post("/api/documents")
+async def add_document(
+    request: Request,
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+):
+    """Add a document to the knowledge base.
+
+    Uploads the file into the configured Google Drive folder, then ingests it
+    into the live retrieval index so the assistant can answer from it right
+    away. Because it also lives in Drive, the next startup re-ingest keeps it.
+    """
+    import os as _os
+
+    filename = (file.filename or "").strip()
+    ext = _os.path.splitext(filename)[1].lower()
+    if ext not in _ALLOWED_DOC_EXT:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported file type {ext or '?'}. Use PDF, DOCX, TXT or MD.",
+        )
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=422, detail="The file is empty.")
+    if len(data) > _MAX_DOC_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 20 MB).")
+
+    if _settings.document_source == "local" or not _settings.drive_folder_id:
+        raise HTTPException(
+            status_code=503,
+            detail="Google Drive isn't configured on the server, so documents "
+                   "can't be added to the knowledge base.",
+        )
+
+    # 1) Upload into Drive (and extract text from the bytes we hold).
+    try:
+        source = build_drive_source(_settings)
+        doc = source.upload_file(filename=filename, data=data)
+    except ValueError as exc:  # unsupported type / no extractable text
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001 — map Drive errors to a 502 hint
+        logger.error(
+            "api.documents.upload_failed",
+            extra={"error": str(exc), "file": filename},
+        )
+        raise HTTPException(status_code=502, detail=_drive_error_hint(exc))
+
+    # 2) Ingest into the live index so it's answerable immediately.
+    try:
+        chunks = request.app.state.assistant.document_store.add_document(doc)
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "api.documents.ingest_failed",
+            extra={"error": str(exc), "file": filename},
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Uploaded to Drive, but indexing failed. It will be picked "
+                   "up on the next server restart.",
+        )
+
+    logger.info(
+        "api.documents.added",
+        extra={"file": filename, "chunks": chunks, "by": user.email},
+    )
+    return {
+        "ok": True,
+        "filename": doc.metadata.get("drive_name", filename),
+        "title": doc.title,
+        "chunks": chunks,
+        "url": doc.metadata.get("url", ""),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Session helpers
 # ---------------------------------------------------------------------------
 

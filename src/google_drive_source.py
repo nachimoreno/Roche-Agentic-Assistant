@@ -77,6 +77,22 @@ except ImportError:
 _GDOC_EXPORT_MIME   = "text/plain"
 _GSHEET_EXPORT_MIME = "text/csv"
 
+# Read covers listing/downloading the corpus; write is needed only to upload a
+# new document into the folder (the "add document" feature). The write scope is
+# requested lazily, on a separate service, so normal ingestion stays read-only.
+_READ_SCOPES  = ["https://www.googleapis.com/auth/drive.readonly"]
+_WRITE_SCOPES = ["https://www.googleapis.com/auth/drive"]
+
+# Extensions a scientist may upload, mapped to the MIME type Drive should store
+# them as. Google-native types (Docs/Sheets) are intentionally absent — those
+# are created in Drive, not uploaded.
+_UPLOAD_MIME = {
+    ".pdf":  "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".txt":  "text/plain",
+    ".md":   "text/markdown",
+}
+
 _SUPPORTED = {
     "application/vnd.google-apps.document":    "gdoc",
     "application/vnd.google-apps.spreadsheet": "gsheet",
@@ -115,7 +131,8 @@ class GoogleDriveSource:
             "GOOGLE_SERVICE_ACCOUNT_JSON",
             os.getenv("GOOGLE_OAUTH_CREDENTIALS"),
         )
-        self._service = None  # lazy init
+        self._service = None         # lazy read-only service
+        self._writer_service = None  # lazy read/write service (uploads only)
 
     # ------------------------------------------------------------------
     # DocumentSource protocol
@@ -185,24 +202,86 @@ class GoogleDriveSource:
     # ------------------------------------------------------------------
 
     def _get_service(self):
-        """Lazy-init the Drive API v3 service."""
+        """Lazy-init the read-only Drive API v3 service."""
         if self._service:
             return self._service
 
         from googleapiclient.discovery import build
 
-        creds = self._load_credentials()
+        creds = self._load_credentials(_READ_SCOPES)
         self._service = build("drive", "v3", credentials=creds, cache_discovery=False)
         return self._service
 
-    def _load_credentials(self):
+    def _get_writer_service(self):
+        """Lazy-init a read/write Drive service, used only for uploads."""
+        if self._writer_service:
+            return self._writer_service
+
+        from googleapiclient.discovery import build
+
+        creds = self._load_credentials(_WRITE_SCOPES)
+        self._writer_service = build(
+            "drive", "v3", credentials=creds, cache_discovery=False
+        )
+        return self._writer_service
+
+    def upload_file(
+        self, *, filename: str, data: bytes, mime_type: str | None = None
+    ) -> "SourceDocument":
+        """Upload a file into the configured Drive folder and return it as a
+        `SourceDocument` (id, title, extracted text, metadata) ready to ingest.
+
+        The text is extracted from the bytes we already hold, so there's no
+        download round-trip. Raises on any Drive error (bad scope, no Editor
+        access, or the service-account storage-quota limit on My Drive folders)
+        — the caller surfaces the reason.
+        """
+        from googleapiclient.http import MediaIoBaseUpload
+
+        ext = os.path.splitext(filename)[1].lower()
+        mime = mime_type or _UPLOAD_MIME.get(ext)
+        if mime is None:
+            raise ValueError(f"Unsupported file type: {ext or filename!r}")
+
+        service = self._get_writer_service()
+        media = MediaIoBaseUpload(io.BytesIO(data), mimetype=mime, resumable=False)
+        meta = service.files().create(
+            body={"name": filename, "parents": [self.folder_id]},
+            media_body=media,
+            fields="id, name, mimeType, modifiedTime, webViewLink",
+            supportsAllDrives=True,
+        ).execute()
+
+        content = extract_text(filename, data, mime)
+        if not content.strip():
+            raise ValueError(
+                "Could not extract any text from the document "
+                "(it may be a scanned image or empty)."
+            )
+
+        return SourceDocument(
+            id=meta["id"],
+            title=_infer_title(meta["name"], content),
+            content=content,
+            modified_at=_parse_time(meta.get("modifiedTime", "")),
+            metadata={
+                "drive_id":      meta["id"],
+                "drive_name":    meta["name"],
+                "mime_type":     meta.get("mimeType", mime),
+                "modified_time": meta.get("modifiedTime", ""),
+                "source":        "google_drive",
+                "folder_id":     self.folder_id,
+                "subfolder":     "",
+                "url":           meta.get("webViewLink", ""),
+            },
+        )
+
+    def _load_credentials(self, scopes: list[str]):
         if not self._creds_path:
             raise RuntimeError(
                 "No Google credentials found. "
                 "Set GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_OAUTH_CREDENTIALS."
             )
-
-        scopes = ["https://www.googleapis.com/auth/drive.readonly"]
 
         # The credential is accepted two ways:
         #   * a filesystem path to a key file (local dev), or
@@ -356,6 +435,21 @@ def _docx_to_text(content: bytes) -> str:
     except ImportError:
         logger.warning("python-docx not installed — DOCX text extraction unavailable")
         return "[DOCX: install python-docx to extract text]"
+
+def extract_text(filename: str, data: bytes, mime_type: str = "") -> str:
+    """Extract plain text from uploaded bytes, dispatching on extension/MIME.
+
+    Mirrors the per-type handling in `_download_text`, but works on bytes we
+    already have in memory (an upload) instead of a Drive download.
+    """
+    ext = os.path.splitext(filename)[1].lower()
+    if ext == ".pdf" or mime_type == "application/pdf":
+        return _pdf_to_text(data)
+    if ext == ".docx" or mime_type.endswith("wordprocessingml.document"):
+        return _docx_to_text(data)
+    # text/plain, text/markdown, .txt, .md
+    return data.decode("utf-8", errors="replace")
+
 
 def _deduplicate(files: list[dict]) -> list[dict]:
     """

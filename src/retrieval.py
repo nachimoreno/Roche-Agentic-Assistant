@@ -198,6 +198,60 @@ class DocumentStore:
         )
         return report
 
+    def add_document(self, doc: SourceDocument) -> int:
+        """Ingest a single document into the live index, now — without a full
+        re-scan of the source.
+
+        Chunks, embeds and upserts the document, records it in the manifest and
+        the citation metadata map, and rebuilds the lexical index so BM25 sees
+        it too. Returns the number of chunks written. Used by the "add document"
+        feature so an uploaded file becomes answerable immediately; because the
+        file is also persisted to the source (Drive), the next startup `ingest()`
+        keeps it rather than dropping it as stale.
+        """
+        manifest = self._load_manifest()
+
+        # Replace any prior chunks for this id (re-upload of the same file).
+        prior = manifest.get(doc.id)
+        if prior:
+            self._store.delete(ids=prior.get("chunk_ids", []))
+
+        doc_chunks = list(_chunk_document(doc))
+        if doc_chunks:
+            embeddings = self._embedder.embed([c.text for c in doc_chunks])
+            self._store.upsert(
+                ids=[c.chunk_id for c in doc_chunks],
+                embeddings=embeddings,
+                documents=[c.text for c in doc_chunks],
+                metadatas=[c.metadata for c in doc_chunks],
+            )
+
+        manifest[doc.id] = {
+            "hash": _hash(doc.content),
+            "scheme": _CHUNK_SCHEME_VERSION,
+            "modified_at": doc.modified_at.isoformat(),
+            "chunk_ids": [c.chunk_id for c in doc_chunks],
+        }
+        self._save_manifest(manifest)
+
+        self._doc_meta[doc.id] = {
+            "process": doc.metadata.get("process"),
+            "department": doc.metadata.get("department"),
+            "title": doc.title,
+            "url": doc.metadata.get("url"),
+        }
+
+        # Rebuild the lexical index from the full corpus so BM25 and dense
+        # retrieval stay in lockstep (cheap at MVP scale).
+        if self._lexical is not None:
+            self._lexical.index(self._store.get_all())
+
+        logger.info(
+            "ingest.add_document",
+            extra={"doc_id": doc.id, "chunks": len(doc_chunks)},
+        )
+        return len(doc_chunks)
+
     def doc_metadata(self, source_id: str) -> Optional[dict[str, Optional[str]]]:
         """Process/department/title for a document id, or None if unknown.
 

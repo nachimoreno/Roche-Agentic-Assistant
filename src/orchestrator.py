@@ -141,6 +141,11 @@ class Assistant:
         self._sn_config = servicenow_config
         self._history_turns = history_turns
 
+    @property
+    def document_store(self):
+        """The RAG document store, for runtime ingestion (add-document)."""
+        return self._agent.document_store
+
     def _history_for(self, session_id: UUID) -> list[AgentTurn]:
         """Recent turns as agent `Turn`s, for both classification and RAG.
 
