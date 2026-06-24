@@ -34,7 +34,7 @@ from conversation_layer import AnalysisResult, ConversationLayer
 from db import FeedbackEntry
 from incident_intake import IncidentDecision, IncidentIntake
 from logging_setup import new_correlation_id
-from repositories import FeedbackRepository, SessionRepository
+from repositories import FeedbackRepository, QuestionGapRepository, SessionRepository
 from servicenow_tool import ServiceNowConfig, create_servicenow_incident
 
 
@@ -125,6 +125,7 @@ class Assistant:
         attribution: Optional[AttributionResolver] = None,
         incident_intake: Optional[IncidentIntake] = None,
         servicenow_config: Optional[ServiceNowConfig] = None,
+        question_gap_repo: Optional[QuestionGapRepository] = None,
         history_turns: int = 10,
     ) -> None:
         self._cl = conversation_layer
@@ -139,6 +140,10 @@ class Assistant:
         # normal RAG answer (which explains the manual steps).
         self._incident = incident_intake
         self._sn_config = servicenow_config
+        # Logs questions the assistant answered weakly or declined, for the
+        # documentation-gap analytics. Optional so the orchestrator still works
+        # (gap logging simply skipped) when unwired.
+        self._gaps = question_gap_repo
         self._history_turns = history_turns
 
     def _history_for(self, session_id: UUID) -> list[AgentTurn]:
@@ -175,6 +180,53 @@ class Assistant:
         self._feedback.replace_attributions(
             feedback_id, result.method, result.rows, tenant_id=tenant_id
         )
+
+    # ------------------------------------------------------------------
+    # Documentation-gap logging
+    # ------------------------------------------------------------------
+
+    def _log_question_gap(
+        self,
+        *,
+        answer,
+        analysis: AnalysisResult,
+        session_id: UUID,
+        turn_id: Optional[UUID],
+        message: str,
+        tenant_id: Optional[UUID],
+    ) -> None:
+        """Record a weak/declined answer as a documentation gap (best-effort).
+
+        A "gap" is a question the assistant declined (off-domain guardrail) or
+        answered with weak grounding (low_confidence). These are exactly the
+        turns feedback analytics can't see. No-op when the repo is unwired or
+        the answer was confident; never lets a logging hiccup break the turn.
+        """
+        if self._gaps is None:
+            return
+        kind = "declined" if getattr(answer, "declined", False) else (
+            "low_confidence" if getattr(answer, "low_confidence", False) else None
+        )
+        if kind is None:
+            return
+        # The spell-corrected retrieval query is the cleanest topic signal; fall
+        # back to the raw message when none was produced.
+        query = (analysis.corrected_query or message or "").strip()
+        if not query:
+            return
+        try:
+            self._gaps.add(
+                session_id=session_id,
+                turn_id=turn_id,
+                query=query,
+                kind=kind,
+                language=analysis.language,
+                retrieval_max_dense=getattr(answer, "retrieval_max_dense", None),
+                retrieval_max_lexical=getattr(answer, "retrieval_max_lexical", None),
+                tenant_id=tenant_id,
+            )
+        except Exception:
+            logger.warning("gap.log_failed", extra={"session_id": str(session_id)})
 
     # ------------------------------------------------------------------
     # Incident handling
@@ -300,6 +352,14 @@ class Assistant:
             self._cited_tuples(answer.citations),
             tenant_id=tenant_id,
         )
+        self._log_question_gap(
+            answer=answer,
+            analysis=analysis,
+            session_id=session_id,
+            turn_id=assistant_turn.id,
+            message=message,
+            tenant_id=tenant_id,
+        )
 
         return Response(
             text=answer.text,
@@ -397,6 +457,7 @@ class Assistant:
         citations: list[Citation] = []
         follow_ups: list[str] = []
         low_confidence = False
+        complete: Optional[AnswerComplete] = None
         try:
             for piece in self._agent.answer_stream(
                 message=message,
@@ -412,6 +473,7 @@ class Assistant:
                     citations = piece.citations
                     follow_ups = piece.follow_ups
                     low_confidence = piece.low_confidence
+                    complete = piece
         except GeneratorExit:
             # Client disconnected mid-stream (Stop button, closed tab). The
             # client persists the partial answer it kept on screen via
@@ -435,6 +497,15 @@ class Assistant:
             self._cited_tuples(citations),
             tenant_id=tenant_id,
         )
+        if complete is not None:
+            self._log_question_gap(
+                answer=complete,
+                analysis=analysis,
+                session_id=session_id,
+                turn_id=assistant_turn.id,
+                message=message,
+                tenant_id=tenant_id,
+            )
         yield StreamDone(
             text=full_text,
             citations=citations,

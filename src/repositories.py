@@ -12,11 +12,13 @@ invisible to normal code paths but recoverable for compliance.
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Protocol, Sequence
 from uuid import UUID
 
+import numpy as np
 from sqlalchemy import Engine, and_, case, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session as DbSession, select
@@ -25,6 +27,7 @@ from db import (
     Announcement,
     FeedbackAttribution,
     FeedbackEntry,
+    QuestionGap,
     Session,
     Turn,
     TurnCitation,
@@ -510,6 +513,214 @@ class FeedbackRepository:
             if is_negative:
                 bucket["negative"] += 1
         return [buckets[d] for d in sorted(buckets)]
+
+
+# ---------------------------------------------------------------------------
+# QuestionGapRepository
+# ---------------------------------------------------------------------------
+
+# Cosine similarity at or above which a new question joins an existing cluster
+# rather than seeding a new one. The multilingual MiniLM embeddings are L2-
+# normalised, so cosine == dot product. 0.72 is a deliberately conservative
+# default (paraphrases of the same question typically score > 0.8; unrelated
+# lab topics sit well below); tune via QuestionGapRepository(similarity=...).
+_GAP_CLUSTER_SIMILARITY = 0.72
+
+
+class _Embedder(Protocol):
+    """Minimal shape the gap repo needs to fingerprint a question for clustering."""
+
+    def embed(self, texts: list[str]) -> list[list[float]]: ...
+
+
+def _cosine(a: np.ndarray, b: np.ndarray) -> float:
+    """Cosine similarity. Inputs are already L2-normalised, so this is a dot."""
+    return float(np.dot(a, b))
+
+
+class QuestionGapRepository:
+    """Logs and clusters questions the assistant answered weakly or declined.
+
+    `add` runs lightweight online clustering: it embeds the incoming question
+    and attaches it to the nearest existing cluster seed (within
+    `similarity`), else starts a new cluster. `clusters` aggregates the rows
+    into ranked topics for the documentation-gap dashboard. The embedder is
+    optional — without it every row is its own cluster, so the orchestrator can
+    still log gaps when no embedder is wired.
+    """
+
+    def __init__(
+        self,
+        engine: Engine,
+        *,
+        embedder: Optional[_Embedder] = None,
+        similarity: float = _GAP_CLUSTER_SIMILARITY,
+    ) -> None:
+        self._engine = engine
+        self._embedder = embedder
+        self._similarity = similarity
+
+    def _embed(self, text: str) -> Optional[list[float]]:
+        if self._embedder is None:
+            return None
+        try:
+            vecs = self._embedder.embed([text])
+        except Exception:
+            logger.warning("gap.embed_failed", exc_info=True)
+            return None
+        return vecs[0] if vecs else None
+
+    def _seed_vectors(
+        self, db: DbSession, tenant_id: Optional[UUID]
+    ) -> list[tuple[UUID, Optional[str], np.ndarray]]:
+        """Existing cluster seeds (id, label, vector) for nearest-match search.
+
+        A seed is a row whose `cluster_id == id`. Only seeds with a stored
+        embedding participate; the scan is tenant-scoped and skips soft-deleted
+        rows. Cheap at MVP gap volume (one short vector per distinct topic).
+        """
+        stmt = select(QuestionGap).where(
+            QuestionGap.cluster_id == QuestionGap.id,  # type: ignore[arg-type]
+            QuestionGap.embedding.is_not(None),  # type: ignore[union-attr]
+            QuestionGap.deleted_at.is_(None),  # type: ignore[union-attr]
+        )
+        if tenant_id is not None:
+            stmt = stmt.where(QuestionGap.tenant_id == tenant_id)
+        out: list[tuple[UUID, Optional[str], np.ndarray]] = []
+        for seed in db.exec(stmt).all():
+            try:
+                vec = np.asarray(json.loads(seed.embedding), dtype=np.float32)
+            except Exception:
+                continue
+            out.append((seed.id, seed.cluster_label, vec))
+        return out
+
+    def add(
+        self,
+        *,
+        session_id: UUID,
+        query: str,
+        kind: str,
+        turn_id: Optional[UUID] = None,
+        language: Optional[str] = None,
+        retrieval_max_dense: Optional[float] = None,
+        retrieval_max_lexical: Optional[float] = None,
+        tenant_id: Optional[UUID] = None,
+    ) -> QuestionGap:
+        """Record one documentation-gap turn, assigning it to a topic cluster."""
+        query = (query or "").strip()
+        vector = self._embed(query)
+        row = QuestionGap(
+            session_id=session_id,
+            turn_id=turn_id,
+            tenant_id=tenant_id,
+            query=query,
+            kind=kind,
+            language=language,
+            retrieval_max_dense=retrieval_max_dense,
+            retrieval_max_lexical=retrieval_max_lexical,
+            embedding=json.dumps(vector) if vector is not None else None,
+        )
+
+        with DbSession(self._engine) as db:
+            assigned = False
+            if vector is not None:
+                v = np.asarray(vector, dtype=np.float32)
+                best_id: Optional[UUID] = None
+                best_label: Optional[str] = None
+                best_sim = self._similarity
+                for seed_id, seed_label, seed_vec in self._seed_vectors(db, tenant_id):
+                    sim = _cosine(v, seed_vec)
+                    if sim >= best_sim:
+                        best_sim, best_id, best_label = sim, seed_id, seed_label
+                if best_id is not None:
+                    row.cluster_id = best_id
+                    row.cluster_label = best_label
+                    assigned = True
+            if not assigned:
+                # Seed a new cluster: point it at itself and label it with its
+                # own text (works for both the no-embedder and no-match cases).
+                row.cluster_id = row.id
+                row.cluster_label = query
+            db.add(row)
+            db.commit()
+            db.refresh(row)
+
+        logger.info(
+            "gap.logged",
+            extra={
+                "id": str(row.id),
+                "kind": kind,
+                "cluster_id": str(row.cluster_id),
+                "new_cluster": row.cluster_id == row.id,
+            },
+        )
+        return row
+
+    def _scoped(self, stmt, since: Optional[datetime], tenant_id: Optional[UUID]):
+        stmt = stmt.where(QuestionGap.deleted_at.is_(None))  # type: ignore[union-attr]
+        if since is not None:
+            stmt = stmt.where(QuestionGap.created_at >= since)
+        if tenant_id is not None:
+            stmt = stmt.where(QuestionGap.tenant_id == tenant_id)
+        return stmt
+
+    def clusters(
+        self,
+        *,
+        since: Optional[datetime] = None,
+        tenant_id: Optional[UUID] = None,
+        limit: int = 20,
+        examples_per_cluster: int = 5,
+    ) -> list[dict]:
+        """Documentation gaps grouped into topics, biggest first.
+
+        Each entry: the cluster label, how many questions fell into it, the
+        low_confidence/declined split, a few example questions (most recent
+        first), and when it was last seen. Bucketed in Python so the same code
+        runs on SQLite and Postgres; gap volume is small at MVP scale.
+        """
+        stmt = self._scoped(select(QuestionGap), since, tenant_id).order_by(
+            QuestionGap.created_at.desc()  # type: ignore[union-attr]
+        )
+        with DbSession(self._engine) as db:
+            rows = list(db.exec(stmt).all())
+
+        buckets: dict[UUID, dict] = {}
+        for r in rows:
+            key = r.cluster_id or r.id
+            b = buckets.get(key)
+            if b is None:
+                b = {
+                    "cluster_id": str(key),
+                    "label": r.cluster_label or r.query,
+                    "count": 0,
+                    "kinds": {"low_confidence": 0, "declined": 0},
+                    "examples": [],
+                    "last_seen": r.created_at.isoformat(),
+                }
+                buckets[key] = b
+            b["count"] += 1
+            if r.kind in b["kinds"]:
+                b["kinds"][r.kind] += 1
+            if len(b["examples"]) < examples_per_cluster and r.query not in b["examples"]:
+                b["examples"].append(r.query)
+
+        ranked = sorted(buckets.values(), key=lambda b: b["count"], reverse=True)
+        return ranked[:limit]
+
+    def count(
+        self,
+        *,
+        since: Optional[datetime] = None,
+        tenant_id: Optional[UUID] = None,
+    ) -> int:
+        """Total gap rows in scope (handy for a dashboard headline number)."""
+        stmt = self._scoped(
+            select(func.count()).select_from(QuestionGap), since, tenant_id
+        )
+        with DbSession(self._engine) as db:
+            return int(db.exec(stmt).one())
 
 
 # ---------------------------------------------------------------------------

@@ -161,6 +161,47 @@ class Announcement(SQLModel, table=True):
     deleted_at: Optional[datetime] = Field(default=None, index=True)
 
 
+class QuestionGap(SQLModel, table=True):
+    """A question the assistant could not answer well — a documentation gap.
+
+    Logged on the question path whenever an answer is weakly grounded
+    (`low_confidence`) or the off-domain guardrail declined it (`declined`).
+    These turns are exactly where Roche's "what info do scientists need / which
+    docs are unclear" insight lives, and they are invisible to the feedback
+    analytics today (which only sees feedback turns).
+
+    Near-duplicate questions are grouped into clusters at write time so the
+    dashboard can show "12 scientists asked about X" instead of 12 rows: each
+    row keeps its exact `query`, and `cluster_id` points at the seed row that
+    started its cluster (a row whose `cluster_id == id` is itself a seed).
+    `embedding` is the query's normalised vector (JSON-encoded floats), stored
+    so clustering never has to re-embed.
+    """
+    id: UUID = Field(default_factory=new_id, primary_key=True)
+    session_id: UUID = Field(foreign_key="session.id", index=True)
+    turn_id: Optional[UUID] = Field(default=None, foreign_key="turn.id", index=True)
+    tenant_id: Optional[UUID] = Field(default=None, index=True)
+    # The exact question (the spell-corrected retrieval query when available),
+    # kept verbatim for drill-down.
+    query: str
+    # Why this turn was a gap: "low_confidence" (answered but weakly grounded)
+    # or "declined" (off-domain guardrail refused).
+    kind: str = Field(index=True)
+    language: Optional[str] = Field(default=None, index=True)
+    # Top per-retriever scores at answer time ([0, 1] scale), for later tuning.
+    retrieval_max_dense: Optional[float] = Field(default=None)
+    retrieval_max_lexical: Optional[float] = Field(default=None)
+    # Normalised query embedding as a JSON list of floats; None if no embedder
+    # was wired (clustering then degrades to one cluster per row).
+    embedding: Optional[str] = Field(default=None)
+    # The seed row id of this row's cluster. A seed has cluster_id == id.
+    cluster_id: Optional[UUID] = Field(default=None, index=True)
+    # Representative text for the cluster (the seed's query at creation time).
+    cluster_label: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    deleted_at: Optional[datetime] = Field(default=None, index=True)
+
+
 # ---------------------------------------------------------------------------
 # Engine factory
 # ---------------------------------------------------------------------------
