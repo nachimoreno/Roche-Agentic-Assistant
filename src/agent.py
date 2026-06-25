@@ -352,6 +352,11 @@ class RAGAgent:
         self._min_dense = min_dense
         self._min_lexical = min_lexical
 
+    @property
+    def document_store(self) -> DocumentStore:
+        """The backing store — lets callers ingest new documents at runtime."""
+        return self._docs
+
     def _off_domain(self, retrieval: RetrievalResult) -> bool:
         """True when retrieval is too weak to answer — clearly off-domain.
 

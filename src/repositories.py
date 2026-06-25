@@ -498,20 +498,40 @@ class FeedbackRepository:
         SQLite and Postgres unchanged; feedback volume is small at MVP scale.
         """
         stmt = self._scoped(
-            select(FeedbackEntry.created_at, self._negative_clause()),
+            select(
+                FeedbackEntry.created_at,
+                self._negative_clause(),
+                FeedbackEntry.rating,
+                FeedbackEntry.source,
+            ),
             since,
             tenant_id,
         ).order_by(FeedbackEntry.created_at)
         with DbSession(self._engine) as db:
             rows = db.exec(stmt).all()
 
+        def _new(day: str) -> dict:
+            return {
+                "date": day,
+                "total": 0,
+                "negative": 0,
+                "up": 0,            # thumbs-up ratings that day
+                "down": 0,          # thumbs-down ratings
+                "explicit": 0,      # feedback the scientist gave on purpose
+                "nlp": 0,           # sentiment volunteered in chat, detected by NLP
+            }
+
         buckets: dict[str, dict] = {}
-        for created_at, is_negative in rows:
+        for created_at, is_negative, rating, source in rows:
             day = created_at.date().isoformat()
-            bucket = buckets.setdefault(day, {"date": day, "total": 0, "negative": 0})
+            bucket = buckets.setdefault(day, _new(day))
             bucket["total"] += 1
             if is_negative:
                 bucket["negative"] += 1
+            if rating in ("up", "down"):
+                bucket[rating] += 1
+            if source in ("explicit", "nlp"):
+                bucket[source] += 1
         return [buckets[d] for d in sorted(buckets)]
 
 

@@ -368,6 +368,9 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
 .upload-name{background:var(--blue-light);border:1px solid rgba(11,65,205,.18);border-radius:var(--r);padding:2px 8px;font-size:11.5px}
 .upload-rm{color:var(--t4);font-size:16px;line-height:1;transition:color var(--tx)}
 .upload-rm:hover{color:var(--red)}
+.upload-add{margin-left:auto;display:flex;align-items:center;gap:5px;background:var(--blue);color:#fff;border-radius:var(--r);padding:5px 11px;font-size:11.5px;font-weight:600;transition:background var(--tx)}
+.upload-add:hover{background:var(--blue-h)}
+.upload-add:disabled{opacity:.6;cursor:not-allowed}
 .composer-ta{width:100%;border:none;outline:none;resize:none;font-size:14.5px;color:var(--t1);line-height:1.6;background:transparent;padding:16px 20px 0;min-height:52px;max-height:200px;overflow-y:auto;transition:color .3s}
 .composer-ta::placeholder{color:var(--t4)}
 .composer-foot{display:flex;align-items:center;gap:8px;padding:10px 12px 12px 16px}
@@ -375,6 +378,10 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
 .tool-btn{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:var(--r-lg);color:var(--t4);transition:all var(--tx);position:relative}
 .tool-btn:hover{background:var(--surface-2);color:var(--blue)}
 .tool-btn input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer;font-size:0}
+/* upload unavailable (Drive read-only / unconfigured): greyed + blocked cursor */
+.tool-btn.disabled{opacity:.4;cursor:not-allowed}
+.tool-btn.disabled:hover{background:none;color:var(--t4)}
+.tool-btn.disabled input[type="file"]{cursor:not-allowed;pointer-events:none}
 .c-sep{width:1px;height:20px;background:var(--border);margin:0 4px}
 .sc-wrap{position:relative}
 .sc-popover{position:absolute;bottom:calc(100% + 8px);left:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);box-shadow:var(--s-lg);padding:6px;min-width:230px;opacity:0;pointer-events:none;transform:translateY(8px);transition:all .18s}
@@ -781,6 +788,10 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
       <div id="uploadBar" class="upload-bar">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         <span id="uploadName" class="upload-name"></span>
+        <button id="uploadAdd" class="upload-add" onclick="uploadDocument()" aria-label="Add to knowledge base">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add to knowledge base
+        </button>
         <button class="upload-rm" onclick="removeUpload()" aria-label="Remove file">×</button>
       </div>
       <textarea class="composer-ta" id="msgInput" rows="1"
@@ -788,9 +799,9 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
         aria-label="Type your message"></textarea>
       <div class="composer-foot">
         <div class="c-tools">
-          <button class="tool-btn" title="Upload PDF or document" aria-label="Upload">
+          <button class="tool-btn" id="attachBtn" title="Upload PDF or document" aria-label="Upload">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-            <input type="file" accept=".pdf,.doc,.docx,.txt" onchange="handleUpload(event)" tabindex="-1">
+            <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.txt" onchange="handleUpload(event)" tabindex="-1">
           </button>
           <button class="tool-btn" id="voiceBtn" title="Voice input" aria-label="Voice" onclick="toggleVoice()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
@@ -973,6 +984,7 @@ async function bootApp() {
     currentUser.role === 'admin' ? '' : 'none';
 
   loadAnnouncement();   // show the current admin banner, if any
+  refreshUploadCapability();   // grey out uploads if Drive is read-only/unconfigured
 
   // Desktop: dock the sidebar (ChatGPT-style) unless the user collapsed it.
   if (localStorage.getItem(SK_SB) !== '0') document.body.classList.add('docked');
@@ -2248,17 +2260,73 @@ function hfOnAnswerComplete(m) {
 }
 
 /* ─── FILE / VOICE ───────────────────────────────────────────── */
+/* Knowledge-base uploads need a *writable* Drive folder. When the service
+ * account is read-only (or Drive is unconfigured) we grey out the attach
+ * control with a reason, rather than letting an upload fail mid-flight. */
+let uploadEnabled = true;
+let uploadDisabledReason = '';
+
+function setUploadEnabled(enabled, reason) {
+  uploadEnabled = !!enabled;
+  uploadDisabledReason = reason || '';
+  const btn = document.getElementById('attachBtn');
+  const input = document.getElementById('fileInput');
+  if (!btn || !input) return;
+  input.disabled = !uploadEnabled;
+  btn.classList.toggle('disabled', !uploadEnabled);
+  btn.setAttribute('aria-disabled', String(!uploadEnabled));
+  btn.title = uploadEnabled
+    ? 'Upload PDF or document'
+    : (uploadDisabledReason || 'Document uploads are unavailable right now.');
+}
+
+async function refreshUploadCapability() {
+  try {
+    const r = await fetch('/api/documents/capability');
+    const c = await r.json().catch(() => ({ enabled: false }));
+    setUploadEnabled(c.enabled, c.reason);
+  } catch {
+    setUploadEnabled(false, "Couldn't check the document-upload service.");
+  }
+}
+
 function handleUpload(e) {
+  if (!uploadEnabled) { toast('⚠ ' + (uploadDisabledReason || 'Uploads are unavailable.'), 'amber'); return; }
   const f = e.target.files?.[0]; if (!f) return;
   pendingFile = f;
   document.getElementById('uploadName').textContent = f.name;
+  const addBtn = document.getElementById('uploadAdd');
+  if (addBtn) { addBtn.disabled = false; }
   document.getElementById('uploadBar').style.display = 'flex';
-  $input.placeholder = 'Ask about ' + f.name + '…'; $input.focus();
+  $input.placeholder = 'Add “' + f.name + '” to the knowledge base, then ask about it…'; $input.focus();
 }
 function removeUpload() {
   pendingFile = null;
   document.getElementById('uploadBar').style.display = 'none';
   $input.placeholder = 'Ask about onboarding, equipment, samples, procedures — or report an issue… (⌘K for commands)';
+}
+
+/* Upload the attached file into the Drive corpus + live index so the assistant
+ * can answer from it. The cosmetic "attach" is now a real ingest action. */
+async function uploadDocument() {
+  if (!pendingFile) return;
+  const f = pendingFile;
+  const btn = document.getElementById('uploadAdd');
+  const label = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'Adding…';
+  try {
+    const fd = new FormData();
+    fd.append('file', f, f.name);
+    const r = await fetch('/api/documents', { method: 'POST', body: fd });
+    const out = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(out.detail || ('Upload failed (' + r.status + ')'));
+    toast('✓ Added “' + (out.title || f.name) + '” — ' + out.chunks +
+          ' sections indexed. You can ask about it now.', 'green');
+    removeUpload();
+  } catch (err) {
+    toast('⚠ ' + (err.message || 'Could not add the document'), 'amber');
+    btn.disabled = false; btn.innerHTML = label;
+  }
 }
 
 /* Voice input records audio in the browser (MediaRecorder) and sends it to
@@ -2369,13 +2437,16 @@ document.addEventListener('drop', e => {
   document.getElementById('dropOverlay').classList.remove('active');
   const file = e.dataTransfer?.files?.[0];
   if (file) {
+    if (!uploadEnabled) { toast('⚠ ' + (uploadDisabledReason || 'Uploads are unavailable.'), 'amber'); return; }
     const allowed = ['.pdf','.doc','.docx','.txt'];
     const ok = allowed.some(ext => file.name.toLowerCase().endsWith(ext));
     if (ok) {
       pendingFile = file;
       document.getElementById('uploadName').textContent = file.name;
+      const addBtn = document.getElementById('uploadAdd');
+      if (addBtn) { addBtn.disabled = false; }
       document.getElementById('uploadBar').style.display = 'flex';
-      $input.placeholder = 'Ask about ' + file.name + '…';
+      $input.placeholder = 'Add “' + file.name + '” to the knowledge base, then ask about it…';
       $input.focus();
       toast('📄 ' + file.name + ' attached', 'green');
     } else {

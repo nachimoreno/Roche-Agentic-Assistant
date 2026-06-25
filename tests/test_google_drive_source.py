@@ -18,11 +18,13 @@ from unittest.mock import MagicMock, patch
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import google_drive_source as gds
 from google_drive_source import (
     GoogleDriveSource,
     _deduplicate,
     _infer_title,
     _parse_time,
+    extract_text,
 )
 
 
@@ -190,6 +192,58 @@ class TestCheckConnection:
 
         with pytest.raises(RuntimeError, match="403 forbidden"):
             src.check_connection()
+
+
+class TestCanWrite:
+    """can_write() is the non-destructive upload-permission probe behind the
+    UI's grey-out. It must never raise — a viewer-only account returns False."""
+
+    def _source_with_capability(self, can_add):
+        src = GoogleDriveSource(folder_id="f", credentials_path=None)
+        service = MagicMock()
+        service.files().get().execute.return_value = {
+            "capabilities": {"canAddChildren": can_add}
+        }
+        src._writer_service = service
+        return src
+
+    def test_true_when_folder_allows_adding_children(self):
+        assert self._source_with_capability(True).can_write() is True
+
+    def test_false_when_viewer_only(self):
+        assert self._source_with_capability(False).can_write() is False
+
+    def test_false_and_swallows_errors(self):
+        src = GoogleDriveSource(folder_id="f", credentials_path=None)
+        service = MagicMock()
+        service.files().get().execute.side_effect = RuntimeError("403 forbidden")
+        src._writer_service = service
+        assert src.can_write() is False
+
+
+class TestExtractText:
+    """extract_text() turns uploaded bytes into plain text, dispatching on type."""
+
+    def test_txt_decodes_utf8(self):
+        assert extract_text("notes.txt", "héllo".encode("utf-8")) == "héllo"
+
+    def test_md_decodes(self):
+        assert "# Title" in extract_text("doc.md", b"# Title\n\nbody")
+
+    def test_unknown_extension_falls_back_to_text_decode(self):
+        assert extract_text("data.csv", b"a,b,c") == "a,b,c"
+
+    def test_pdf_dispatches_to_pdf_extractor(self, monkeypatch):
+        monkeypatch.setattr(gds, "_pdf_to_text", lambda data: "PDF TEXT")
+        assert extract_text("f.pdf", b"%PDF-1.4 ...") == "PDF TEXT"
+
+    def test_docx_dispatches_to_docx_extractor(self, monkeypatch):
+        monkeypatch.setattr(gds, "_docx_to_text", lambda data: "DOCX TEXT")
+        assert extract_text("f.docx", b"PK\x03\x04 ...") == "DOCX TEXT"
+
+    def test_dispatches_on_mime_when_extension_missing(self, monkeypatch):
+        monkeypatch.setattr(gds, "_pdf_to_text", lambda data: "PDF TEXT")
+        assert extract_text("noext", b"bytes", "application/pdf") == "PDF TEXT"
 
 
 # ---------------------------------------------------------------------------

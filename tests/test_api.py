@@ -18,6 +18,7 @@ import os
 # Provide a dummy so importing the module never reaches the network.
 os.environ.setdefault("GROQ_API_KEY", "test-key")
 
+from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
@@ -657,6 +658,139 @@ def test_gaps_endpoint_shape_for_admin(client):
     c = body["clusters"][0]
     for key in ("cluster_id", "label", "count", "kinds", "examples"):
         assert key in c
+
+
+# ---------------------------------------------------------------------------
+# Documents — knowledge-base upload + capability probe
+# ---------------------------------------------------------------------------
+
+class _FakeDriveSource:
+    """Stand-in for GoogleDriveSource: controllable write-capability + upload."""
+
+    def __init__(self, *, can_write=True, upload=None, upload_error=None):
+        self._can_write = can_write
+        self._upload = upload
+        self._upload_error = upload_error
+
+    def can_write(self):
+        return self._can_write
+
+    def upload_file(self, *, filename, data):
+        if self._upload_error is not None:
+            raise self._upload_error
+        return self._upload
+
+
+def _configure_drive(monkeypatch, *, source=None, document_source="google_drive",
+                     folder="folder123"):
+    """Point the documents endpoints at a fake Drive + settings."""
+    monkeypatch.setattr(
+        api, "_settings",
+        SimpleNamespace(document_source=document_source, drive_folder_id=folder),
+    )
+    if source is not None:
+        monkeypatch.setattr(api, "build_drive_source", lambda s: source)
+
+
+def _upload(client, name="sop.txt", data=b"some text", ctype="text/plain"):
+    return client.post("/api/documents", files={"file": (name, data, ctype)})
+
+
+def test_documents_capability_enabled_when_writable(client, monkeypatch):
+    _configure_drive(monkeypatch, source=_FakeDriveSource(can_write=True))
+    r = client.get("/api/documents/capability")
+    assert r.status_code == 200
+    assert r.json() == {"enabled": True, "reason": ""}
+
+
+def test_documents_capability_disabled_when_unconfigured(client, monkeypatch):
+    _configure_drive(monkeypatch, document_source="local", folder=None)
+    body = client.get("/api/documents/capability").json()
+    assert body["enabled"] is False and body["reason"]
+
+
+def test_documents_capability_disabled_when_readonly(client, monkeypatch):
+    _configure_drive(monkeypatch, source=_FakeDriveSource(can_write=False))
+    body = client.get("/api/documents/capability").json()
+    assert body["enabled"] is False
+    assert "read-only" in body["reason"].lower()
+
+
+def test_documents_capability_never_errors_on_probe_failure(client, monkeypatch):
+    # A Drive outage must degrade to "disabled", never a 500 (fail-proof).
+    monkeypatch.setattr(
+        api, "_settings",
+        SimpleNamespace(document_source="google_drive", drive_folder_id="folder123"),
+    )
+    def _boom(_s):
+        raise RuntimeError("drive unreachable")
+    monkeypatch.setattr(api, "build_drive_source", _boom)
+    r = client.get("/api/documents/capability")
+    assert r.status_code == 200
+    assert r.json()["enabled"] is False
+
+
+def test_add_document_rejects_unsupported_type(client, monkeypatch):
+    _configure_drive(monkeypatch, source=_FakeDriveSource())
+    r = _upload(client, name="malware.exe", data=b"x", ctype="application/octet-stream")
+    assert r.status_code == 415
+
+
+def test_add_document_rejects_empty_file(client, monkeypatch):
+    _configure_drive(monkeypatch, source=_FakeDriveSource())
+    r = _upload(client, data=b"")
+    assert r.status_code == 422
+
+
+def test_add_document_rejects_too_large(client, monkeypatch):
+    _configure_drive(monkeypatch, source=_FakeDriveSource())
+    monkeypatch.setattr(api, "_MAX_DOC_BYTES", 8)
+    r = _upload(client, data=b"more than eight bytes")
+    assert r.status_code == 413
+
+
+def test_add_document_503_when_drive_unconfigured(client, monkeypatch):
+    _configure_drive(monkeypatch, document_source="local", folder=None)
+    r = _upload(client, data=b"hello")
+    assert r.status_code == 503
+
+
+def test_add_document_success_indexes_and_returns_chunks(client, monkeypatch):
+    doc = SimpleNamespace(
+        title="Lab SOP", metadata={"drive_name": "sop.txt", "url": "http://drive/x"}
+    )
+    _configure_drive(monkeypatch, source=_FakeDriveSource(upload=doc))
+    seen = {}
+    def _add(d):
+        seen["doc"] = d
+        return 4
+    _inject(SimpleNamespace(document_store=SimpleNamespace(add_document=_add)))
+
+    r = _upload(client, data=b"some indexed text")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert body["chunks"] == 4
+    assert body["title"] == "Lab SOP"
+    assert seen["doc"] is doc   # the Drive doc was handed to live ingestion
+
+
+def test_add_document_maps_permission_error_to_502_hint(client, monkeypatch):
+    src = _FakeDriveSource(upload_error=RuntimeError("403 insufficientPermissions"))
+    _configure_drive(monkeypatch, source=src)
+    r = _upload(client, data=b"hello")
+    assert r.status_code == 502
+    assert "editor" in r.json()["detail"].lower()
+
+
+def test_add_document_ingest_failure_returns_500(client, monkeypatch):
+    doc = SimpleNamespace(title="Doc", metadata={"drive_name": "sop.txt"})
+    _configure_drive(monkeypatch, source=_FakeDriveSource(upload=doc))
+    def _boom(_d):
+        raise RuntimeError("chroma down")
+    _inject(SimpleNamespace(document_store=SimpleNamespace(add_document=_boom)))
+    r = _upload(client, data=b"text")
+    assert r.status_code == 500
 
 
 # ---------------------------------------------------------------------------
