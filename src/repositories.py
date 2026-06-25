@@ -625,9 +625,17 @@ class QuestionGapRepository:
         language: Optional[str] = None,
         retrieval_max_dense: Optional[float] = None,
         retrieval_max_lexical: Optional[float] = None,
+        topic: Optional[str] = None,
+        department: Optional[str] = None,
+        tenure_days: Optional[int] = None,
         tenant_id: Optional[UUID] = None,
     ) -> QuestionGap:
-        """Record one documentation-gap turn, assigning it to a topic cluster."""
+        """Record one documentation-gap turn, assigning it to a topic cluster.
+
+        `topic`/`department` (nearest-doc process) and `tenure_days` (asker's
+        account age) are optional onboarding-funnel enrichment, resolved by the
+        orchestrator; clustering and the gaps panel work without them.
+        """
         query = (query or "").strip()
         vector = self._embed(query)
         row = QuestionGap(
@@ -639,6 +647,9 @@ class QuestionGapRepository:
             language=language,
             retrieval_max_dense=retrieval_max_dense,
             retrieval_max_lexical=retrieval_max_lexical,
+            topic=topic,
+            department=department,
+            tenure_days=tenure_days,
             embedding=json.dumps(vector) if vector is not None else None,
         )
 
@@ -741,6 +752,57 @@ class QuestionGapRepository:
         )
         with DbSession(self._engine) as db:
             return int(db.exec(stmt).one())
+
+    def onboarding(
+        self,
+        *,
+        newcomer_days: int = 14,
+        since: Optional[datetime] = None,
+        tenant_id: Optional[UUID] = None,
+        limit: int = 20,
+        examples_per_topic: int = 5,
+    ) -> dict:
+        """Where newcomers get stuck, grouped by topic — the onboarding funnel.
+
+        Keeps only gap rows from users still in their first `newcomer_days`
+        (rows where `tenure_days` is known and within the window), then groups
+        by `topic` (nearest-doc process; unclassified declines fall under
+        "(unclassified)"). Each topic carries volume, the low_confidence/declined
+        split, and a few example questions. Returns the matched newcomer-gap
+        total alongside the ranked topics. Python-side bucketing keeps it
+        portable across SQLite and Postgres at MVP scale.
+        """
+        stmt = self._scoped(select(QuestionGap), since, tenant_id).where(
+            QuestionGap.tenure_days.is_not(None),  # type: ignore[union-attr]
+            QuestionGap.tenure_days <= newcomer_days,  # type: ignore[operator]
+        ).order_by(QuestionGap.created_at.desc())  # type: ignore[union-attr]
+        with DbSession(self._engine) as db:
+            rows = list(db.exec(stmt).all())
+
+        buckets: dict[str, dict] = {}
+        for r in rows:
+            key = r.topic or "(unclassified)"
+            b = buckets.get(key)
+            if b is None:
+                b = {
+                    "topic": key,
+                    "count": 0,
+                    "kinds": {"low_confidence": 0, "declined": 0},
+                    "examples": [],
+                }
+                buckets[key] = b
+            b["count"] += 1
+            if r.kind in b["kinds"]:
+                b["kinds"][r.kind] += 1
+            if len(b["examples"]) < examples_per_topic and r.query not in b["examples"]:
+                b["examples"].append(r.query)
+
+        ranked = sorted(buckets.values(), key=lambda b: b["count"], reverse=True)
+        return {
+            "newcomer_days": newcomer_days,
+            "total": len(rows),
+            "topics": ranked[:limit],
+        }
 
 
 # ---------------------------------------------------------------------------

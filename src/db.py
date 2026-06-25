@@ -198,6 +198,15 @@ class QuestionGap(SQLModel, table=True):
     cluster_id: Optional[UUID] = Field(default=None, index=True)
     # Representative text for the cluster (the seed's query at creation time).
     cluster_label: Optional[str] = Field(default=None)
+    # Onboarding-funnel enrichment: the nearest-doc process/department this
+    # question is about (resolved via attribution at write time; None when no
+    # doc is close enough), and the asker's account age in days at ask time
+    # (None when the user/created_at couldn't be resolved). Together these let
+    # the /admin onboarding view answer "what do newcomers get stuck on, by
+    # topic" without re-deriving anything at read time.
+    topic: Optional[str] = Field(default=None, index=True)
+    department: Optional[str] = Field(default=None, index=True)
+    tenure_days: Optional[int] = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=utcnow, index=True)
     deleted_at: Optional[datetime] = Field(default=None, index=True)
 
