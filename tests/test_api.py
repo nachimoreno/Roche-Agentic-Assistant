@@ -18,7 +18,7 @@ import os
 # Provide a dummy so importing the module never reaches the network.
 os.environ.setdefault("GROQ_API_KEY", "test-key")
 
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -32,6 +32,7 @@ from orchestrator import Response, StreamDone, StreamMeta, StreamToken
 from repositories import (
     AnnouncementRepository,
     FeedbackRepository,
+    QuestionGapRepository,
     SessionRepository,
     UserRepository,
 )
@@ -94,6 +95,7 @@ def client(tmp_path):
     api.app.state.users = UserRepository(engine)
     api.app.state.feedback = FeedbackRepository(engine)
     api.app.state.announcements = AnnouncementRepository(engine)
+    api.app.state.question_gaps = QuestionGapRepository(engine)
     api.app.dependency_overrides[get_current_user] = lambda: _FAKE_USER
     try:
         yield TestClient(api.app)
@@ -607,6 +609,7 @@ def test_analytics_404_for_regular_user(client):
     assert client.get("/api/analytics/summary").status_code == 404
     assert client.get("/api/analytics/hotspots").status_code == 404
     assert client.get("/api/analytics/trend").status_code == 404
+    assert client.get("/api/analytics/gaps").status_code == 404
     assert client.get("/admin").status_code == 404
 
 
@@ -635,6 +638,25 @@ def test_analytics_rejects_bad_dimension(client):
     _register(client, "it-admin2@roche.com")
     _promote_current(client, "it-admin2@roche.com")
     assert client.get("/api/analytics/hotspots?dimension=user").status_code == 422
+
+
+def test_gaps_endpoint_shape_for_admin(client):
+    _register(client, "gap-admin@roche.com")
+    _promote_current(client, "gap-admin@roche.com")
+    # Seed a couple of gap rows directly through the repo the endpoint reads.
+    gaps: QuestionGapRepository = api.app.state.question_gaps
+    sid = uuid4()
+    gaps.add(session_id=sid, query="how do I connect to the vpn", kind="declined")
+    gaps.add(session_id=sid, query="reset my password", kind="low_confidence")
+
+    r = client.get("/api/analytics/gaps?limit=10")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total"] == 2
+    assert isinstance(body["clusters"], list) and body["clusters"]
+    c = body["clusters"][0]
+    for key in ("cluster_id", "label", "count", "kinds", "examples"):
+        assert key in c
 
 
 # ---------------------------------------------------------------------------

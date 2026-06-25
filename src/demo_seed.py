@@ -50,6 +50,7 @@ from attribution import AttributionRow
 from db import (
     FeedbackAttribution,
     FeedbackEntry,
+    QuestionGap,
     Session,
     Turn,
     TurnCitation,
@@ -434,7 +435,7 @@ def reset(engine: Engine) -> dict:
     """Hard-delete every synthetic row (anything under the demo tenant)."""
     counts: dict[str, int] = {}
     # children first (FKs aren't enforced on sqlite, but keep it correct anyway).
-    for model in (FeedbackAttribution, FeedbackEntry, TurnCitation, Turn, Session):
+    for model in (FeedbackAttribution, FeedbackEntry, QuestionGap, TurnCitation, Turn, Session):
         with DbSession(engine) as db:
             result = db.execute(
                 delete(model).where(model.tenant_id == DEMO_TENANT_ID)
@@ -447,6 +448,184 @@ def reset(engine: Engine) -> dict:
 def demo_feedback_count(engine: Engine) -> int:
     """How many feedback entries currently exist under the demo tenant."""
     return FeedbackRepository(engine).summary(tenant_id=DEMO_TENANT_ID)["total"]
+
+
+# ---------------------------------------------------------------------------
+# Documentation-gap demo data (the QuestionGap table / /admin gaps panel)
+# ---------------------------------------------------------------------------
+
+# A story, like the feedback above: topics scientists keep asking about that the
+# corpus doesn't cover. Each cluster is a real "documentation gap" — the panel
+# shows them ranked by volume with a declined/weak split. `declined_frac` is the
+# share logged as "declined" (no relevant doc at all); the rest are
+# "low_confidence" (a weak partial answer). Phrasings are genuine paraphrases of
+# one need, mirroring how live clustering would group them.
+GAP_CLUSTERS = [
+    {
+        "label": "Booking instruments after hours",
+        "n": 14, "declined_frac": 0.85,
+        "queries": [
+            "How do I book the confocal microscope after hours?",
+            "Can I reserve an instrument outside working hours?",
+            "How to schedule lab equipment on the weekend?",
+            "Booking the microscope at night — what's the process?",
+            "Is after-hours instrument reservation allowed?",
+        ],
+    },
+    {
+        "label": "Resetting the ELN / LIMS password",
+        "n": 10, "declined_frac": 0.7,
+        "queries": [
+            "How do I reset my ELN password?",
+            "I forgot my LIMS login, how do I recover it?",
+            "Reset the password for the electronic lab notebook",
+            "Can't log into LIMS — how do I change my password?",
+        ],
+    },
+    {
+        "label": "VPN / remote access from home",
+        "n": 8, "declined_frac": 0.8,
+        "queries": [
+            "How do I connect to the VPN from home?",
+            "Setting up remote access to internal apps off-site",
+            "How do I get VPN credentials?",
+            "Can't reach the intranet from home — VPN help",
+        ],
+    },
+    {
+        "label": "Disposing of expired reagents",
+        "n": 6, "declined_frac": 0.3,
+        "queries": [
+            "How do I dispose of expired chemical reagents?",
+            "Getting rid of out-of-date reagents safely",
+            "Expired reagent disposal procedure",
+        ],
+    },
+    {
+        "label": "Shipping samples between sites",
+        "n": 5, "declined_frac": 0.85,
+        "queries": [
+            "How do I ship samples to the Basel site?",
+            "Sending biological samples between facilities",
+            "Inter-site sample transport rules",
+        ],
+    },
+    {
+        "label": "Calibrating the pH meter",
+        "n": 4, "declined_frac": 0.25,
+        "queries": [
+            "How do I calibrate the pH meter?",
+            "pH meter calibration steps",
+            "Calibrate the pH probe before use",
+        ],
+    },
+    # Long tail: one-off declines that stay singletons (the panel's bottom rows).
+    {"label": "Where is the campus cafeteria?", "n": 1, "declined_frac": 1.0,
+     "queries": ["Where is the campus cafeteria?"]},
+    {"label": "How do I claim travel expenses?", "n": 1, "declined_frac": 1.0,
+     "queries": ["How do I claim travel expenses?"]},
+    {"label": "Applying for a parking permit", "n": 1, "declined_frac": 1.0,
+     "queries": ["How do I apply for a campus parking permit?"]},
+]
+
+
+def seed_gaps(
+    *,
+    engine: Engine,
+    days: int = DEFAULT_DAYS,
+    seed: int = DEFAULT_SEED,
+    now: datetime | None = None,
+) -> dict:
+    """Generate synthetic QuestionGap rows from GAP_CLUSTERS (deterministic).
+
+    Rows are written directly (no embedder needed) with cluster ids pre-assigned
+    so the gaps panel renders nicely on a fresh DB. The first row of each cluster
+    is its seed (`cluster_id == id`); the rest point at it. All under the demo
+    tenant so `reset()` removes them.
+    """
+    now = now or utcnow()
+    rng = random.Random(seed + 7)   # offset so gap dates differ from feedback
+    sessions_repo = SessionRepository(engine)
+
+    # A small pool of demo sessions for QuestionGap.session_id to reference.
+    session_ids: list[UUID] = []
+    for i in range(8):
+        sid = new_id()
+        sessions_repo.get_or_create(
+            sid, tenant_id=DEMO_TENANT_ID, user_id=f"demo-user-{i % 12:02d}"
+        )
+        session_ids.append(sid)
+
+    total = 0
+    with DbSession(engine) as db:
+        for spec in GAP_CLUSTERS:
+            seed_row_id: UUID | None = None
+            for j in range(spec["n"]):
+                declined = rng.random() < spec["declined_frac"]
+                kind = "declined" if declined else "low_confidence"
+                row = QuestionGap(
+                    session_id=rng.choice(session_ids),
+                    tenant_id=DEMO_TENANT_ID,
+                    query=rng.choice(spec["queries"]),
+                    kind=kind,
+                    language="english",
+                    # Declines sit below both floors; weak answers clear dense but
+                    # land in the warn band — plausible values for later tuning.
+                    retrieval_max_dense=round(rng.uniform(0.12, 0.28) if declined
+                                              else rng.uniform(0.41, 0.46), 3),
+                    retrieval_max_lexical=round(rng.uniform(0.0, 0.4), 3),
+                    embedding=None,
+                    created_at=_backdate(rng, now, days),
+                )
+                # First row seeds the cluster; the rest join it.
+                if seed_row_id is None:
+                    row.cluster_id = row.id
+                    seed_row_id = row.id
+                else:
+                    row.cluster_id = seed_row_id
+                row.cluster_label = spec["label"]
+                db.add(row)
+                total += 1
+        db.commit()
+
+    logger.info("demo_seed.gaps.seeded", extra={"rows": total, "clusters": len(GAP_CLUSTERS)})
+    return {"total": total, "clusters": len(GAP_CLUSTERS)}
+
+
+def demo_gap_count(engine: Engine) -> int:
+    """How many QuestionGap rows currently exist under the demo tenant."""
+    from repositories import QuestionGapRepository
+    return QuestionGapRepository(engine).count(tenant_id=DEMO_TENANT_ID)
+
+
+def ensure_demo_gaps(
+    engine: Engine,
+    *,
+    enabled: bool = True,
+    days: int = DEFAULT_DAYS,
+    seed_value: int = DEFAULT_SEED,
+) -> None:
+    """Idempotently make sure the demo documentation-gap data exists (startup).
+
+    Mirrors `ensure_demo_feedback`: seeds once when the demo tenant has no gap
+    rows yet, otherwise no-op. Never lets seeding break startup.
+    """
+    if not enabled:
+        return
+    try:
+        existing = demo_gap_count(engine)
+    except Exception:
+        logger.exception("demo_seed.gaps.precheck_failed")
+        return
+    if existing:
+        logger.info("demo_seed.gaps.skip", extra={"existing": existing})
+        return
+    try:
+        result = seed_gaps(engine=engine, days=days, seed=seed_value)
+    except Exception:
+        logger.exception("demo_seed.gaps.failed")
+        return
+    logger.info("demo_seed.gaps.done", extra={"total": result["total"]})
 
 
 def ensure_demo_feedback(

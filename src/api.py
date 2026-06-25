@@ -38,7 +38,7 @@ from datetime import datetime, timedelta, timezone
 
 from auth import get_current_user, hash_password, require_admin, verify_password
 from db import User, utcnow
-from demo_seed import ensure_demo_feedback
+from demo_seed import ensure_demo_feedback, ensure_demo_gaps
 from llm import LLMAuthError, transcribe_audio
 from logging_setup import setup_logging
 from main import build_assistant, build_drive_source, build_engine
@@ -131,6 +131,9 @@ async def lifespan(app: FastAPI):
         enabled=_settings.seed_demo_feedback,
         count=_settings.demo_feedback_count,
     )
+    # Same idea for the documentation-gap panel: seed a synthetic, demo-tenant
+    # gap dataset once on a fresh DB so /admin's gaps panel isn't empty.
+    ensure_demo_gaps(engine, enabled=_settings.seed_demo_feedback)
     _report_drive_status(_settings)
     try:
         app.state.assistant = build_assistant(_settings, engine=engine)
