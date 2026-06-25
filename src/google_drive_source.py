@@ -276,6 +276,28 @@ class GoogleDriveSource:
             },
         )
 
+    def can_write(self) -> bool:
+        """Best-effort probe: can this account actually upload into the folder?
+
+        Does a *non-destructive* metadata read of the target folder's
+        `capabilities.canAddChildren` through the write-scoped service, so the
+        answer reflects what a real upload would be allowed to do (it catches a
+        viewer-only service account, which is the common misconfiguration). Never
+        raises — returns False on any failure (missing creds, no access, network)
+        so callers can grey out the upload feature without risking startup.
+        """
+        try:
+            service = self._get_writer_service()
+            meta = service.files().get(
+                fileId=self.folder_id,
+                fields="capabilities/canAddChildren",
+                supportsAllDrives=True,
+            ).execute()
+            return bool(meta.get("capabilities", {}).get("canAddChildren"))
+        except Exception:
+            logger.warning("drive.can_write_probe_failed", exc_info=True)
+            return False
+
     def _load_credentials(self, scopes: list[str]):
         if not self._creds_path:
             raise RuntimeError(

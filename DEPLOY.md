@@ -62,6 +62,15 @@ fits where Render's 512 MB free tier OOMs.
 
    `HOST=0.0.0.0` and `PORT=7860` are already baked into the Dockerfile — no need to set them.
 
+   > **Document uploads need write access.** Read-only ingestion works with the
+   > folder shared to the service account as **Viewer**, but the in-app "add to
+   > knowledge base" upload needs the folder shared as **Editor** (and, because a
+   > service account has no personal Drive storage quota, the folder should live
+   > in a **Shared Drive**). When the account is Viewer-only the app still runs
+   > normally — the attach control simply greys out with a reason. To enable
+   > uploads, share the `DRIVE_FOLDER_ID` folder with the service-account email
+   > as Editor.
+
 4. **Push the repo to the Space remote:**
    ```bash
    git remote add space https://huggingface.co/spaces/<user>/<space-name>

@@ -533,6 +533,47 @@ async def add_document(
     }
 
 
+def _documents_capability() -> dict:
+    """Whether the add-document feature is usable right now, and why not.
+
+    Never raises: the server must come up even when Drive is unconfigured or the
+    service account is read-only, and the client uses this to grey out the upload
+    control rather than letting an upload fail mid-flight. `enabled` is True only
+    when Drive is configured *and* the service account can write to the folder.
+    """
+    if _settings.document_source == "local" or not _settings.drive_folder_id:
+        return {
+            "enabled": False,
+            "reason": "Document uploads are turned off — Google Drive isn't "
+                      "configured on the server.",
+        }
+    try:
+        if not build_drive_source(_settings).can_write():
+            return {
+                "enabled": False,
+                "reason": "The Drive service account has read-only access to the "
+                          "knowledge-base folder. Ask an admin to grant it Editor "
+                          "access to enable uploads.",
+            }
+    except Exception as exc:  # noqa: BLE001 — degrade gracefully, never 500 here
+        logger.warning(
+            "api.documents.capability_failed", extra={"error": str(exc)}
+        )
+        return {
+            "enabled": False,
+            "reason": "Couldn't reach Google Drive to check upload permissions.",
+        }
+    return {"enabled": True, "reason": ""}
+
+
+@app.get("/api/documents/capability")
+def documents_capability(user: User = Depends(get_current_user)):
+    """Tell the client whether knowledge-base uploads are possible, so the UI
+    can disable the "add document" control (with a reason) instead of letting an
+    upload fail mid-way. Cheap, non-destructive permission probe."""
+    return _documents_capability()
+
+
 # ---------------------------------------------------------------------------
 # Session helpers
 # ---------------------------------------------------------------------------
