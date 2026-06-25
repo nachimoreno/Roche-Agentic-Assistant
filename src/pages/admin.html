@@ -181,6 +181,27 @@ textarea{font-family:var(--font)}
 /* languages */
 .lang-foot{margin-top:14px;font-size:11.5px;color:var(--t4);line-height:1.5}
 
+/* documentation gaps */
+.c-gaps{grid-column:span 12}
+.gap-intro{font-size:12.5px;color:var(--t3);margin:-6px 0 14px}
+.gap-intro b{font-weight:700}
+.gap-row{border-bottom:1px solid var(--border)}
+.gap-row:last-child{border-bottom:0}
+.gap-head{display:grid;grid-template-columns:16px minmax(140px,340px) 1fr 92px;gap:14px;align-items:center;padding:10px 0;cursor:pointer}
+.gap-head:hover .gap-key{color:var(--blue)}
+.gap-chev{color:var(--t4);font-size:10px;transition:transform .2s;text-align:center}
+.gap-row.open .gap-chev{transform:rotate(90deg);color:var(--blue)}
+.gap-key{font-size:13px;font-weight:600;color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gap-track{height:14px;background:var(--surface-2);border-radius:99px;overflow:hidden;display:flex}
+.gap-dec,.gap-lc{height:100%;width:0;transition:width 1s cubic-bezier(.2,.7,.2,1)}
+.gap-dec{background:var(--red)}
+.gap-lc{background:var(--amber)}
+.gap-val{font-size:12px;color:var(--t3);text-align:right;font-variant-numeric:tabular-nums}
+.gap-val b{color:var(--t1);font-weight:700}
+.gap-examples{list-style:none;margin:2px 0 12px 30px;padding:0;border-left:2px solid var(--border)}
+.gap-examples li{font-size:12.5px;color:var(--t2);padding:5px 0 5px 14px;position:relative}
+.gap-examples li::before{content:"\203A";position:absolute;left:0;color:var(--t4)}
+
 /* announcement composer */
 .c-announce{background:linear-gradient(180deg,var(--surface),var(--inset))}
 .annx{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--t2);margin-bottom:14px;padding:11px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r)}
@@ -400,6 +421,20 @@ textarea{font-family:var(--font)}
       </div>
       <div class="donut-wrap sm"><canvas id="langChart"></canvas></div>
       <div class="lang-foot">Includes volunteered feedback and rated-answer comments. Soft-deleted entries excluded.</div>
+    </section>
+
+    <!-- DOCUMENTATION GAPS -->
+    <section class="card c-gaps" aria-label="Documentation gaps">
+      <div class="ctitle">
+        <span class="tico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="11"/><line x1="11" y1="14" x2="11.01" y2="14"/></svg></span>
+        Documentation gaps <small id="gapTotal"></small>
+      </div>
+      <p class="gap-intro">Questions the assistant <b style="color:var(--amber)">answered weakly</b> or <b style="color:var(--red)">declined</b>, grouped by topic. Click a row for the exact questions.</p>
+      <div id="gapList"><div class="empty">Loading gaps…</div></div>
+      <div class="hs-legend">
+        <span><i style="background:var(--red)"></i>declined — no relevant doc found</span>
+        <span><i style="background:var(--amber)"></i>weak — answered but low confidence</span>
+      </div>
     </section>
 
     <!-- ANNOUNCEMENT -->
@@ -700,6 +735,46 @@ function renderSentiment(emotions){
   $("sentiLabel").textContent = net>=20 ? "net positive" : net<=-20 ? "net negative" : "balanced";
 }
 
+/* ── documentation gaps: questions the docs don't cover ────────── */
+function renderGaps(data){
+  const clusters = (data && data.clusters) || [];
+  const total = (data && data.total) || 0;
+  $("gapTotal").textContent = total ? `${total} unanswered` : "";
+  if (!clusters.length){ $("gapList").innerHTML = `<div class="empty">No documentation gaps in this range — every question found a relevant doc.</div>`; return; }
+  const max = Math.max(...clusters.map(c => c.count)) || 1;
+  $("gapList").innerHTML = clusters.map((c, i) => {
+    const w = c.count / max * 100;
+    const lc = (c.kinds && c.kinds.low_confidence) || 0;
+    const dec = (c.kinds && c.kinds.declined) || 0;
+    const tot = lc + dec || 1;
+    const examples = (c.examples || []).map(q => `<li>${escAnn(q)}</li>`).join("");
+    return `<div class="gap-row" data-i="${i}">
+      <div class="gap-head">
+        <span class="gap-chev">▶</span>
+        <span class="gap-key" title="${escAnn(c.label)}">${escAnn(c.label)}</span>
+        <div class="gap-track">
+          <div class="gap-dec" data-w="${w * dec / tot}"></div>
+          <div class="gap-lc" data-w="${w * lc / tot}"></div>
+        </div>
+        <span class="gap-val"><b>${c.count}</b> ask${c.count === 1 ? "" : "s"}</span>
+      </div>
+      <ul class="gap-examples" hidden>${examples}</ul>
+    </div>`;
+  }).join("");
+  requestAnimationFrame(() =>
+    document.querySelectorAll(".gap-dec,.gap-lc").forEach(el => el.style.width = el.dataset.w + "%"));
+  document.querySelectorAll("#gapList .gap-head").forEach(h => h.addEventListener("click", () => {
+    const row = h.parentElement;
+    const ex = row.querySelector(".gap-examples");
+    ex.hidden = !ex.hidden;
+    row.classList.toggle("open", !ex.hidden);
+  }));
+}
+async function loadGaps(){
+  try{ renderGaps(await fetchJSON("/api/analytics/gaps" + qs({limit: 12}))); }
+  catch(err){ if (err.denied) lockout(); else { $("gapList").innerHTML = `<div class="empty">Could not load gaps.</div>`; console.error(err); } }
+}
+
 /* ── orchestration ─────────────────────────────────────────────── */
 function lockout(){
   document.body.innerHTML = `
@@ -724,6 +799,7 @@ async function load(){
     renderActivity(trend);
     renderAdoption(trend);
     renderSourceMix(trend);
+    loadGaps();   // additive panel; isolates its own errors so it never breaks the dashboard
     $("updated").textContent = "Updated "+new Date().toLocaleTimeString()+" · live feedback signal";
     $("liveTxt").textContent = "Live";
   }catch(err){

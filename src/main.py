@@ -29,7 +29,7 @@ from lexical_index import BM25Index
 from llm import GroqClient
 from logging_setup import setup_logging
 from orchestrator import Assistant
-from repositories import FeedbackRepository, SessionRepository
+from repositories import FeedbackRepository, QuestionGapRepository, SessionRepository
 from retrieval import DocumentStore
 from servicenow_tool import ServiceNowConfig
 from settings import Settings
@@ -144,6 +144,9 @@ def build_assistant(settings: Settings, engine: Optional[Engine] = None) -> Assi
     session_repo = SessionRepository(engine)
     feedback_repo = FeedbackRepository(engine)
     attribution = AttributionResolver(docs)
+    # Reuse the same embedder that powers retrieval to cluster gap questions —
+    # no second model load, and clustering shares the corpus's vector space.
+    question_gap_repo = QuestionGapRepository(engine, embedder=embedder)
 
     incident_intake = IncidentIntake(llm=llm)
     servicenow_config = ServiceNowConfig(
@@ -161,6 +164,7 @@ def build_assistant(settings: Settings, engine: Optional[Engine] = None) -> Assi
         attribution=attribution,
         incident_intake=incident_intake,
         servicenow_config=servicenow_config,
+        question_gap_repo=question_gap_repo,
     )
 
 

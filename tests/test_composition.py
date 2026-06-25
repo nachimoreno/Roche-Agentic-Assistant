@@ -14,6 +14,20 @@ from main import build_source
 from settings import Settings
 
 
+@pytest.fixture(autouse=True)
+def _isolate_source_env(monkeypatch):
+    # conftest's load_dotenv() pushes the dev .env into os.environ; pydantic
+    # reads it even with _env_file=None, so a local DOCUMENT_SOURCE=local would
+    # break the default-selection tests. Clear source vars for a clean baseline.
+    for var in (
+        "DOCUMENT_SOURCE",
+        "DRIVE_FOLDER_ID",
+        "GOOGLE_SERVICE_ACCOUNT_JSON",
+        "GOOGLE_OAUTH_CREDENTIALS",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+
 def _settings(**overrides) -> Settings:
     # Establish a clean, fully-specified baseline so selection logic is
     # deterministic regardless of the developer's real .env — conftest calls

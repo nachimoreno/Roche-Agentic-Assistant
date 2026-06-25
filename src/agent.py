@@ -172,6 +172,16 @@ class AnswerResult(BaseModel):
     # Set server-side (not by the model): True when retrieval was weak enough
     # that the answer should carry a "verify this" caution badge.
     low_confidence: bool = Field(default=False)
+    # Set server-side (not by the model): True when the off-domain guardrail
+    # declined the query (deterministic message, no LLM call, no citations).
+    # Distinguishes a real decline from a normal weakly-grounded answer so the
+    # orchestrator can log it as a documentation gap. See `_off_domain`.
+    declined: bool = Field(default=False)
+    # Top per-retriever scores for this turn (both on a [0, 1] scale), surfaced
+    # so the orchestrator can persist them on a gap row for later tuning.
+    # None on paths that never retrieved (e.g. capability questions short-circuit).
+    retrieval_max_dense: Optional[float] = Field(default=None)
+    retrieval_max_lexical: Optional[float] = Field(default=None)
 
 
 # ---------------------------------------------------------------------------
@@ -307,6 +317,9 @@ class AnswerComplete:
     citations: list[Citation]
     follow_ups: list[str] = field(default_factory=list)
     low_confidence: bool = False
+    declined: bool = False
+    retrieval_max_dense: Optional[float] = None
+    retrieval_max_lexical: Optional[float] = None
 
 
 StreamPiece = Union[TextDelta, AnswerComplete]
@@ -389,7 +402,13 @@ class RAGAgent:
                     "max_lexical": round(retrieval.max_lexical, 2),
                 },
             )
-            return AnswerResult(text=_decline_message(language), citations=[])
+            return AnswerResult(
+                text=_decline_message(language),
+                citations=[],
+                declined=True,
+                retrieval_max_dense=retrieval.max_dense,
+                retrieval_max_lexical=retrieval.max_lexical,
+            )
 
         chunks = retrieval.chunks
         context = _format_context(chunks)
@@ -411,6 +430,8 @@ class RAGAgent:
         result.citations = _dedupe_citations(result.citations)
         result.follow_ups = _clean_follow_ups(result.follow_ups)
         result.low_confidence = self._low_confidence(retrieval)
+        result.retrieval_max_dense = retrieval.max_dense
+        result.retrieval_max_lexical = retrieval.max_lexical
         self._enrich_titles(result.citations)
         logger.info(
             "agent.answered",
@@ -457,7 +478,13 @@ class RAGAgent:
             )
             message_text = _decline_message(language)
             yield TextDelta(message_text)
-            yield AnswerComplete(text=message_text, citations=[])
+            yield AnswerComplete(
+                text=message_text,
+                citations=[],
+                declined=True,
+                retrieval_max_dense=retrieval.max_dense,
+                retrieval_max_lexical=retrieval.max_lexical,
+            )
             return
 
         chunks = retrieval.chunks
@@ -507,6 +534,8 @@ class RAGAgent:
             citations=citations,
             follow_ups=follow_ups,
             low_confidence=low_confidence,
+            retrieval_max_dense=retrieval.max_dense,
+            retrieval_max_lexical=retrieval.max_lexical,
         )
 
     def _enrich_titles(self, citations: list[Citation]) -> None:
