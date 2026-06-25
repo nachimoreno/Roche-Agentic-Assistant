@@ -235,3 +235,101 @@ def test_confident_answer_logs_no_gap(engine):
     a.handle(uuid4(), "how do I clean the centrifuge?")
 
     assert QuestionGapRepository(engine).count() == 0
+
+
+# ---------------------------------------------------------------------------
+# Onboarding funnel — repository aggregation
+# ---------------------------------------------------------------------------
+
+def test_onboarding_excludes_veterans_and_groups_by_topic(engine):
+    repo = QuestionGapRepository(engine)
+    sid = uuid4()
+    repo.add(session_id=sid, query="reset password", kind="declined",
+             topic="access", tenure_days=2)
+    repo.add(session_id=sid, query="vpn from home", kind="low_confidence",
+             topic="access", tenure_days=6)
+    repo.add(session_id=sid, query="book the scope", kind="declined",
+             topic="booking", tenure_days=40)        # veteran -> excluded
+    repo.add(session_id=sid, query="totally off topic", kind="declined",
+             topic=None, tenure_days=1)               # newcomer, unclassified
+
+    funnel = repo.onboarding(newcomer_days=14)
+    assert funnel["newcomer_days"] == 14
+    assert funnel["total"] == 3                        # veteran dropped
+    topics = {t["topic"]: t for t in funnel["topics"]}
+    assert topics["access"]["count"] == 2
+    assert topics["access"]["kinds"] == {"low_confidence": 1, "declined": 1}
+    assert "(unclassified)" in topics
+    assert "booking" not in topics
+
+
+def test_onboarding_window_is_tunable(engine):
+    repo = QuestionGapRepository(engine)
+    sid = uuid4()
+    repo.add(session_id=sid, query="q1", kind="declined", topic="access", tenure_days=5)
+    repo.add(session_id=sid, query="q2", kind="declined", topic="access", tenure_days=25)
+    assert repo.onboarding(newcomer_days=7)["total"] == 1     # only the day-5 one
+    assert repo.onboarding(newcomer_days=30)["total"] == 2    # both
+
+
+def test_gaps_without_tenure_never_enter_funnel(engine):
+    repo = QuestionGapRepository(engine)
+    # A gap with no tenure recorded (e.g. anonymous/unresolved user) is a valid
+    # documentation gap but must not appear in the onboarding funnel.
+    repo.add(session_id=uuid4(), query="no tenure", kind="declined", topic="access")
+    assert repo.count() == 1
+    assert repo.onboarding(newcomer_days=14)["total"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Onboarding funnel — orchestrator enrichment (topic + tenure on the row)
+# ---------------------------------------------------------------------------
+
+class _FakeAttr:
+    """AttributionResolver stand-in: maps any question to a fixed topic."""
+
+    def __init__(self, process="access", department="IT-Onboarding"):
+        self._p, self._d = process, department
+
+    def resolve_from_text(self, text):
+        from attribution import AttributionResult, AttributionRow
+        return AttributionResult(method="embedding", rows=[AttributionRow(
+            source="01_onboarding.md", section=None,
+            process=self._p, department=self._d, weight=1.0, method="embedding")])
+
+
+def test_orchestrator_enriches_gap_with_topic_and_tenure(engine):
+    from repositories import UserRepository
+    users = UserRepository(engine)
+    user = users.create(email="newbie@roche.com", password_hash="x")  # created now -> newcomer
+    gaps = QuestionGapRepository(engine)
+    a = Assistant(
+        conversation_layer=_FakeCL(),
+        rag_agent=_FakeAgent(AnswerResult(text="off domain", citations=[], declined=True)),
+        session_repo=SessionRepository(engine),
+        feedback_repo=FeedbackRepository(engine),
+        attribution=_FakeAttr(process="access"),
+        question_gap_repo=gaps,
+        user_repo=users,
+    )
+    a.handle(uuid4(), "how do I get access?", user_id=str(user.id))
+
+    funnel = gaps.onboarding(newcomer_days=14)
+    assert funnel["total"] == 1
+    assert funnel["topics"][0]["topic"] == "access"     # topic resolved via attribution
+    # tenure was resolved (newcomer), so the row entered the funnel at all
+
+
+# ---------------------------------------------------------------------------
+# Onboarding funnel — demo seed
+# ---------------------------------------------------------------------------
+
+def test_seed_populates_onboarding_funnel(engine):
+    ensure_demo_gaps(engine)
+    funnel = QuestionGapRepository(engine).onboarding(
+        newcomer_days=14, tenant_id=DEMO_TENANT_ID
+    )
+    assert funnel["total"] > 0
+    topics = {t["topic"] for t in funnel["topics"]}
+    # access (passwords/VPN) is seeded newcomer-heavy, so it must surface
+    assert "access" in topics

@@ -528,6 +528,23 @@ GAP_CLUSTERS = [
      "queries": ["How do I apply for a campus parking permit?"]},
 ]
 
+# Onboarding enrichment for the gap seed: each cluster's topic (the doc
+# `process` it maps to) and the share of its questions that come from newcomers
+# (users in their first ~14 days). Access (passwords/VPN) and booking skew
+# newcomer-heavy so the onboarding funnel tells a clear story: the things new
+# scientists get stuck on first are logging in and reserving equipment.
+GAP_TOPIC = {
+    "Booking instruments after hours":    ("booking", 0.55),
+    "Resetting the ELN / LIMS password":  ("access", 0.85),
+    "VPN / remote access from home":      ("access", 0.80),
+    "Disposing of expired reagents":      ("waste", 0.20),
+    "Shipping samples between sites":     ("samples", 0.30),
+    "Calibrating the pH meter":           ("calibration", 0.25),
+    "Where is the campus cafeteria?":     ("facilities", 0.90),
+    "How do I claim travel expenses?":    ("admin", 0.70),
+    "Applying for a parking permit":      ("facilities", 0.80),
+}
+
 
 def seed_gaps(
     *,
@@ -559,16 +576,24 @@ def seed_gaps(
     total = 0
     with DbSession(engine) as db:
         for spec in GAP_CLUSTERS:
+            topic, newcomer_frac = GAP_TOPIC.get(spec["label"], (None, 0.3))
             seed_row_id: UUID | None = None
             for j in range(spec["n"]):
                 declined = rng.random() < spec["declined_frac"]
                 kind = "declined" if declined else "low_confidence"
+                # Tenure: a newcomer (first ~2 weeks) or a veteran, per the
+                # cluster's newcomer share — this is what the onboarding funnel
+                # filters on.
+                is_newcomer = rng.random() < newcomer_frac
+                tenure_days = rng.randint(0, 13) if is_newcomer else rng.randint(20, 179)
                 row = QuestionGap(
                     session_id=rng.choice(session_ids),
                     tenant_id=DEMO_TENANT_ID,
                     query=rng.choice(spec["queries"]),
                     kind=kind,
                     language="english",
+                    topic=topic,
+                    tenure_days=tenure_days,
                     # Declines sit below both floors; weak answers clear dense but
                     # land in the warn band — plausible values for later tuning.
                     retrieval_max_dense=round(rng.uniform(0.12, 0.28) if declined

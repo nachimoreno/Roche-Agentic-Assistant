@@ -611,6 +611,7 @@ def test_analytics_404_for_regular_user(client):
     assert client.get("/api/analytics/hotspots").status_code == 404
     assert client.get("/api/analytics/trend").status_code == 404
     assert client.get("/api/analytics/gaps").status_code == 404
+    assert client.get("/api/analytics/onboarding").status_code == 404
     assert client.get("/admin").status_code == 404
 
 
@@ -658,6 +659,27 @@ def test_gaps_endpoint_shape_for_admin(client):
     c = body["clusters"][0]
     for key in ("cluster_id", "label", "count", "kinds", "examples"):
         assert key in c
+
+
+def test_onboarding_endpoint_shape_for_admin(client):
+    _register(client, "onb-admin@roche.com")
+    _promote_current(client, "onb-admin@roche.com")
+    gaps: QuestionGapRepository = api.app.state.question_gaps
+    sid = uuid4()
+    # one newcomer (in window) and one veteran (excluded)
+    gaps.add(session_id=sid, query="how do I get access", kind="declined",
+             topic="access", tenure_days=3)
+    gaps.add(session_id=sid, query="reserve the scope", kind="declined",
+             topic="booking", tenure_days=90)
+
+    r = client.get("/api/analytics/onboarding?newcomer_days=14&limit=10")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["newcomer_days"] == 14
+    assert body["total"] == 1                       # veteran excluded
+    assert body["topics"][0]["topic"] == "access"
+    for key in ("topic", "count", "kinds", "examples"):
+        assert key in body["topics"][0]
 
 
 # ---------------------------------------------------------------------------
