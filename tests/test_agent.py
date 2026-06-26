@@ -16,6 +16,7 @@ from agent import (
     AnswerResult,
     Citation,
     RAGAgent,
+    RetrievalInfo,
     TextDelta,
     Turn,
     _clean_citation_value,
@@ -357,7 +358,10 @@ def test_answer_stream_terminal_event_is_last():
     agent, _, _ = _stream_agent(deltas)
     pieces = list(agent.answer_stream("q", language="english"))
     assert isinstance(pieces[-1], AnswerComplete)
-    assert all(isinstance(p, TextDelta) for p in pieces[:-1])
+    # Retrieval transparency: a single RetrievalInfo leads, then prose deltas,
+    # then the terminal AnswerComplete.
+    assert isinstance(pieces[0], RetrievalInfo)
+    assert all(isinstance(p, TextDelta) for p in pieces[1:-1])
 
 
 def test_answer_stream_without_sentinel_yields_all_prose_no_citations():
@@ -649,15 +653,16 @@ def test_clean_follow_ups_dedupes_strips_and_caps():
 
 
 def test_parse_tail_accepts_object_array_and_malformed():
-    cits, fups = _parse_tail(
-        '{"citations": [{"source":"a","section":"s"}], "follow_ups": ["q1"]}'
+    cits, fups, contra = _parse_tail(
+        '{"citations": [{"source":"a","section":"s"}], "follow_ups": ["q1"],'
+        ' "contradiction": true}'
     )
-    assert [c.source for c in cits] == ["a"] and fups == ["q1"]
+    assert [c.source for c in cits] == ["a"] and fups == ["q1"] and contra is True
     # Bare array (legacy form / model ignored the object instruction).
-    cits, fups = _parse_tail('[{"source":"a","section":"s"}]')
-    assert [c.source for c in cits] == ["a"] and fups == []
+    cits, fups, contra = _parse_tail('[{"source":"a","section":"s"}]')
+    assert [c.source for c in cits] == ["a"] and fups == [] and contra is False
     # Garbage degrades to empty, no raise.
-    assert _parse_tail("not json at all") == ([], [])
+    assert _parse_tail("not json at all") == ([], [], False)
 
 
 # ---------------------------------------------------------------------------

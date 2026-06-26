@@ -42,7 +42,13 @@ from demo_seed import ensure_demo_feedback, ensure_demo_gaps
 from llm import LLMAuthError, transcribe_audio
 from logging_setup import setup_logging
 from main import build_assistant, build_drive_source, build_engine
-from orchestrator import Assistant, StreamDone, StreamMeta, StreamToken
+from orchestrator import (
+    Assistant,
+    StreamDone,
+    StreamMeta,
+    StreamSources,
+    StreamToken,
+)
 from repositories import (
     AnnouncementRepository,
     EmailTakenError,
@@ -808,6 +814,8 @@ def chat_stream(
                         "type": ev.analysis.type,
                         "emotion": ev.analysis.emotion,
                     })
+                elif isinstance(ev, StreamSources):
+                    yield _sse("sources", {"count": ev.count, "sources": ev.sources})
                 elif isinstance(ev, StreamToken):
                     yield _sse("token", {"text": ev.text})
                 elif isinstance(ev, StreamDone):
@@ -819,6 +827,7 @@ def chat_stream(
                         "turn_id": str(ev.turn_id) if ev.turn_id else None,
                         "follow_ups": ev.follow_ups,
                         "low_confidence": ev.low_confidence,
+                        "contradiction": ev.contradiction,
                     })
         except Exception as exc:
             category, detail = _error_category(exc)
@@ -977,6 +986,28 @@ def analytics_onboarding(
         tenant_id=user.tenant_id,
         limit=max(1, min(limit, 50)),
     )
+
+
+@app.get("/api/analytics/top-questions")
+def analytics_top_questions(
+    request: Request,
+    days: Optional[int] = None,
+    limit: int = 6,
+    user: User = Depends(get_current_user),
+):
+    """Most-asked questions by scientists, for the welcome screen.
+
+    Available to any signed-in user (not admin-only) since it powers the
+    suggestion cards shown to every scientist on the home screen.
+    """
+    sessions: SessionRepository = request.app.state.sessions
+    return {
+        "questions": sessions.top_questions(
+            limit=max(1, min(limit, 12)),
+            since=_since(days),
+            tenant_id=user.tenant_id,
+        )
+    }
 
 
 if __name__ == "__main__":

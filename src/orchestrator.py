@@ -26,6 +26,7 @@ from agent import (
     AnswerResult,
     Citation,
     RAGAgent,
+    RetrievalInfo,
     TextDelta,
     Turn as AgentTurn,
 )
@@ -74,6 +75,15 @@ class StreamMeta:
 
 
 @dataclass
+class StreamSources:
+    """Emitted once after retrieval, before tokens: what the assistant consulted
+    (for the "searching… N sources" transparency cue in the UI)."""
+
+    count: int
+    sources: list[str] = field(default_factory=list)
+
+
+@dataclass
 class StreamToken:
     """A delta of assistant text to append in the UI."""
 
@@ -89,9 +99,10 @@ class StreamDone:
     turn_id: Optional[UUID] = None      # the assistant turn, for rating
     follow_ups: list[str] = field(default_factory=list)
     low_confidence: bool = False        # weak grounding -> show a verify badge
+    contradiction: bool = False         # cited sources disagree -> show a warning
 
 
-StreamEvent = Union[StreamMeta, StreamToken, StreamDone]
+StreamEvent = Union[StreamMeta, StreamSources, StreamToken, StreamDone]
 
 
 # ---------------------------------------------------------------------------
@@ -521,6 +532,7 @@ class Assistant:
         citations: list[Citation] = []
         follow_ups: list[str] = []
         low_confidence = False
+        contradiction = False
         complete: Optional[AnswerComplete] = None
         try:
             for piece in self._agent.answer_stream(
@@ -529,7 +541,9 @@ class Assistant:
                 history=history,
                 retrieval_query=analysis.corrected_query,
             ):
-                if isinstance(piece, TextDelta):
+                if isinstance(piece, RetrievalInfo):
+                    yield StreamSources(count=piece.count, sources=piece.sources)
+                elif isinstance(piece, TextDelta):
                     full_text += piece.text
                     yield StreamToken(text=piece.text)
                 elif isinstance(piece, AnswerComplete):
@@ -537,6 +551,7 @@ class Assistant:
                     citations = piece.citations
                     follow_ups = piece.follow_ups
                     low_confidence = piece.low_confidence
+                    contradiction = piece.contradiction
                     complete = piece
         except GeneratorExit:
             # Client disconnected mid-stream (Stop button, closed tab). The
@@ -577,6 +592,7 @@ class Assistant:
             turn_id=assistant_turn.id,
             follow_ups=follow_ups,
             low_confidence=low_confidence,
+            contradiction=contradiction,
         )
 
     def record_rating(

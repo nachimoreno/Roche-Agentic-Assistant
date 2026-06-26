@@ -169,6 +169,9 @@ class AnswerResult(BaseModel):
             "next, grounded in the same documentation."
         ),
     )
+    # Model-judged: True when two or more cited sources give conflicting answers
+    # to the question — surfaced in the UI as a "sources disagree" warning.
+    contradiction: bool = Field(default=False)
     # Set server-side (not by the model): True when retrieval was weak enough
     # that the answer should carry a "verify this" caution badge.
     low_confidence: bool = Field(default=False)
@@ -258,13 +261,17 @@ cite, copy the source="..." identifier into "source" and the section="..."
 value into "section" — never merge them, and never put the document="..."
 title into "source".
 
-Return ONLY a JSON object with three fields:
+Return ONLY a JSON object with four fields:
 - "text": your answer in {language}
 - "citations": a list of objects with "source" (the source="..." identifier)
   and "section" (the section heading), one for each context chunk you relied on.
 - "follow_ups": a list of 2-3 short follow-up questions, in {language}, that the
   scientist might naturally ask next — each grounded in the same documentation
   and phrased as a complete question. Use an empty list if none fit.
+- "contradiction": true ONLY if two or more of the sources you cite give
+  conflicting or inconsistent answers to the question (e.g. different values,
+  steps, or rules for the same thing); otherwise false. When true, make the
+  disagreement explicit in "text" and cite each conflicting source.
 """
 
 
@@ -281,13 +288,16 @@ Write your complete answer in {language} as plain prose (no JSON, no
 markdown code fences). When the answer is finished, output a line containing
 exactly:
 ---CITATIONS---
-and then a single JSON object with two fields:
+and then a single JSON object with three fields:
 - "citations": a list of objects with "source" (the source="..." identifier)
   and "section" (the section heading), one per context chunk you relied on (an
   empty list [] if you used none).
 - "follow_ups": a list of 2-3 short follow-up questions, in {language}, that the
   scientist might naturally ask next — each grounded in the same documentation
   and phrased as a complete question (an empty list [] if none fit).
+- "contradiction": true ONLY if two or more of the sources you cite give
+  conflicting or inconsistent answers to the question; otherwise false. When
+  true, make the disagreement explicit in your prose and cite each side.
 Output nothing after the JSON object.
 """
 
@@ -303,6 +313,16 @@ _STREAM_SYSTEM_PROMPT_TEMPLATE = _SYSTEM_PROMPT_HEAD + _STREAM_OUTPUT
 # ---------------------------------------------------------------------------
 
 @dataclass
+class RetrievalInfo:
+    """Emitted once, right after retrieval and before any prose, so the UI can
+    show what the assistant consulted ("searching… N sources found") for
+    transparency. `sources` are distinct document titles, best-effort."""
+
+    count: int
+    sources: list[str] = field(default_factory=list)
+
+
+@dataclass
 class TextDelta:
     """A piece of prose answer text, safe to forward to the client."""
 
@@ -316,13 +336,14 @@ class AnswerComplete:
     text: str
     citations: list[Citation]
     follow_ups: list[str] = field(default_factory=list)
+    contradiction: bool = False
     low_confidence: bool = False
     declined: bool = False
     retrieval_max_dense: Optional[float] = None
     retrieval_max_lexical: Optional[float] = None
 
 
-StreamPiece = Union[TextDelta, AnswerComplete]
+StreamPiece = Union[TextDelta, AnswerComplete, RetrievalInfo]
 
 
 class RAGAgent:
@@ -488,6 +509,14 @@ class RAGAgent:
             return
 
         chunks = retrieval.chunks
+        # Surface what we consulted, before any prose, for retrieval transparency.
+        seen: list[str] = []
+        for c in chunks:
+            title = c.metadata.get("title") or c.metadata.get("source_id")
+            if title and title not in seen:
+                seen.append(title)
+        yield RetrievalInfo(count=len(seen), sources=seen[:5])
+
         context = _format_context(chunks)
         system = _STREAM_SYSTEM_PROMPT_TEMPLATE.format(
             language=language,
@@ -515,9 +544,12 @@ class RAGAgent:
             prose.append(tail)
             yield TextDelta(tail)
 
-        citations, follow_ups = _parse_tail(splitter.citation_tail)
+        citations, follow_ups, contradiction = _parse_tail(splitter.citation_tail)
         citations = _dedupe_citations(citations)
         self._enrich_titles(citations)
+        # A contradiction is only meaningful when at least two distinct sources
+        # are actually cited.
+        contradiction = contradiction and len({c.source for c in citations}) >= 2
         low_confidence = self._low_confidence(retrieval)
         logger.info(
             "agent.streamed",
@@ -533,6 +565,7 @@ class RAGAgent:
             text="".join(prose),
             citations=citations,
             follow_ups=follow_ups,
+            contradiction=contradiction,
             low_confidence=low_confidence,
             retrieval_max_dense=retrieval.max_dense,
             retrieval_max_lexical=retrieval.max_lexical,
@@ -658,30 +691,35 @@ def _parse_citations(tail: str) -> list[Citation]:
         return []
 
 
-def _parse_tail(tail: str) -> tuple[list[Citation], list[str]]:
-    """Parse the streamed post-sentinel tail into citations and follow-ups.
+def _parse_tail(tail: str) -> tuple[list[Citation], list[str], bool]:
+    """Parse the streamed post-sentinel tail into citations, follow-ups, and the
+    contradiction flag.
 
-    The current contract is a JSON object {"citations": [...],
-    "follow_ups": [...]}, but a bare citations array (the previous format, or a
-    model that ignored the object instruction) is also accepted so a malformed
-    tail degrades to "citations only, no follow-ups" rather than losing both.
+    The current contract is a JSON object {"citations": [...], "follow_ups":
+    [...], "contradiction": bool}, but a bare citations array (the previous
+    format, or a model that ignored the object instruction) is also accepted so
+    a malformed tail degrades gracefully rather than losing everything.
     """
     tail = tail.strip()
     if not tail:
-        return [], []
+        return [], [], False
     try:
         data = json.loads(tail)
     except Exception:
         logger.warning("agent.stream.tail_unparseable", extra={"tail": tail[:200]})
-        return [], []
+        return [], [], False
     try:
         if isinstance(data, list):
-            return [Citation.model_validate(c) for c in data], []
+            return [Citation.model_validate(c) for c in data], [], False
         citations = [Citation.model_validate(c) for c in data.get("citations", [])]
-        return citations, _clean_follow_ups(data.get("follow_ups", []))
+        return (
+            citations,
+            _clean_follow_ups(data.get("follow_ups", [])),
+            bool(data.get("contradiction", False)),
+        )
     except Exception:
         logger.warning("agent.stream.tail_invalid", extra={"tail": tail[:200]})
-        return [], []
+        return [], [], False
 
 
 def _retrieval_query(message: str, history: Sequence[Turn]) -> str:
