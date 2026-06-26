@@ -31,10 +31,17 @@ from agent import (
 )
 from attribution import AttributionResolver
 from conversation_layer import AnalysisResult, ConversationLayer
-from db import FeedbackEntry
+from datetime import datetime
+
+from db import FeedbackEntry, utcnow
 from incident_intake import IncidentDecision, IncidentIntake
 from logging_setup import new_correlation_id
-from repositories import FeedbackRepository, QuestionGapRepository, SessionRepository
+from repositories import (
+    FeedbackRepository,
+    QuestionGapRepository,
+    SessionRepository,
+    UserRepository,
+)
 from servicenow_tool import ServiceNowConfig, create_servicenow_incident
 
 
@@ -126,6 +133,7 @@ class Assistant:
         incident_intake: Optional[IncidentIntake] = None,
         servicenow_config: Optional[ServiceNowConfig] = None,
         question_gap_repo: Optional[QuestionGapRepository] = None,
+        user_repo: Optional[UserRepository] = None,
         history_turns: int = 10,
     ) -> None:
         self._cl = conversation_layer
@@ -144,6 +152,10 @@ class Assistant:
         # documentation-gap analytics. Optional so the orchestrator still works
         # (gap logging simply skipped) when unwired.
         self._gaps = question_gap_repo
+        # Used only to compute the asker's account age (tenure) for the
+        # onboarding-funnel enrichment on gap rows. Optional — tenure is simply
+        # left None when unwired.
+        self._users = user_repo
         self._history_turns = history_turns
 
     @property
@@ -190,6 +202,28 @@ class Assistant:
     # Documentation-gap logging
     # ------------------------------------------------------------------
 
+    def _tenure_days(self, user_id: Optional[str], at: datetime) -> Optional[int]:
+        """The asker's account age in days at ask time, for the onboarding funnel.
+
+        None when there's no user repo, no user_id, or the user can't be
+        resolved — tenure is best-effort enrichment, never required.
+        """
+        if self._users is None or not user_id:
+            return None
+        try:
+            user = self._users.get(UUID(str(user_id)))
+        except Exception:
+            return None
+        if user is None or user.created_at is None:
+            return None
+        # Both are UTC instants (we always write utcnow()), but awareness varies
+        # by backend: SQLite hands back naive datetimes, Postgres tz-aware ones.
+        # Drop tzinfo on both so the subtraction never mixes naive and aware.
+        def _naive(dt: datetime) -> datetime:
+            return dt.replace(tzinfo=None) if dt.tzinfo is not None else dt
+
+        return max(0, (_naive(at) - _naive(user.created_at)).days)
+
     def _log_question_gap(
         self,
         *,
@@ -199,6 +233,7 @@ class Assistant:
         turn_id: Optional[UUID],
         message: str,
         tenant_id: Optional[UUID],
+        user_id: Optional[str] = None,
     ) -> None:
         """Record a weak/declined answer as a documentation gap (best-effort).
 
@@ -206,6 +241,10 @@ class Assistant:
         answered with weak grounding (low_confidence). These are exactly the
         turns feedback analytics can't see. No-op when the repo is unwired or
         the answer was confident; never lets a logging hiccup break the turn.
+
+        Enriches each gap with its **topic** (nearest-doc process/department, via
+        attribution) and the asker's **tenure** (account age in days), powering
+        the onboarding-funnel view. Both are best-effort and left None on failure.
         """
         if self._gaps is None:
             return
@@ -219,6 +258,22 @@ class Assistant:
         query = (analysis.corrected_query or message or "").strip()
         if not query:
             return
+
+        # Topic: attribute the question to its nearest document's process /
+        # department (same resolver feedback uses). Off-domain declines may not
+        # land near any doc — then topic stays None ("unclassified" downstream).
+        topic = department = None
+        if self._attribution is not None:
+            try:
+                result = self._attribution.resolve_from_text(query)
+                if result.rows:
+                    topic = result.rows[0].process
+                    department = result.rows[0].department
+            except Exception:
+                pass
+
+        tenure_days = self._tenure_days(user_id, utcnow())
+
         try:
             self._gaps.add(
                 session_id=session_id,
@@ -228,6 +283,9 @@ class Assistant:
                 language=analysis.language,
                 retrieval_max_dense=getattr(answer, "retrieval_max_dense", None),
                 retrieval_max_lexical=getattr(answer, "retrieval_max_lexical", None),
+                topic=topic,
+                department=department,
+                tenure_days=tenure_days,
                 tenant_id=tenant_id,
             )
         except Exception:
@@ -364,6 +422,7 @@ class Assistant:
             turn_id=assistant_turn.id,
             message=message,
             tenant_id=tenant_id,
+            user_id=user_id,
         )
 
         return Response(
@@ -510,6 +569,7 @@ class Assistant:
                 turn_id=assistant_turn.id,
                 message=message,
                 tenant_id=tenant_id,
+                user_id=user_id,
             )
         yield StreamDone(
             text=full_text,

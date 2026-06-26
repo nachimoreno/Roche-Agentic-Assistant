@@ -959,6 +959,26 @@ def analytics_gaps(
     }
 
 
+@app.get("/api/analytics/onboarding")
+def analytics_onboarding(
+    request: Request,
+    days: Optional[int] = None,
+    newcomer_days: int = 14,
+    limit: int = 20,
+    user: User = Depends(require_admin),
+):
+    """Onboarding funnel: where *newcomers* (users in their first `newcomer_days`)
+    get stuck, grouped by topic. Reuses the gap log, filtered to early-tenure
+    questions — directly serves Roche's onboarding priority."""
+    gaps: QuestionGapRepository = request.app.state.question_gaps
+    return gaps.onboarding(
+        newcomer_days=max(1, min(newcomer_days, 365)),
+        since=_since(days),
+        tenant_id=user.tenant_id,
+        limit=max(1, min(limit, 50)),
+    )
+
+
 if __name__ == "__main__":
     import uvicorn
 

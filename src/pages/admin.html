@@ -202,6 +202,13 @@ textarea{font-family:var(--font)}
 .gap-examples li{font-size:12.5px;color:var(--t2);padding:5px 0 5px 14px;position:relative}
 .gap-examples li::before{content:"\203A";position:absolute;left:0;color:var(--t4)}
 
+/* onboarding funnel — reuses the .gap-* row styles, full width */
+.c-onboarding{grid-column:span 12}
+.onb-win{display:inline-flex;gap:0;border:1px solid var(--border-2);border-radius:var(--r);overflow:hidden;margin:-2px 0 12px;vertical-align:middle}
+.onb-win button{background:transparent;border:0;border-right:1px solid var(--border);color:var(--t3);font:11px var(--font);padding:5px 11px;cursor:pointer}
+.onb-win button:last-child{border-right:0}
+.onb-win button.on{background:var(--blue-mid);color:var(--blue)}
+
 /* announcement composer */
 .c-announce{background:linear-gradient(180deg,var(--surface),var(--inset))}
 .annx{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--t2);margin-bottom:14px;padding:11px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r)}
@@ -437,6 +444,25 @@ textarea{font-family:var(--font)}
       </div>
     </section>
 
+    <!-- ONBOARDING FUNNEL -->
+    <section class="card c-onboarding" aria-label="Newcomer struggles by topic">
+      <div class="ctitle">
+        <span class="tico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-6"/></svg></span>
+        Newcomer struggles by topic <small id="onbTotal"></small>
+      </div>
+      <p class="gap-intro">What scientists in their <b>first days</b> get stuck on, grouped by topic — where onboarding documentation falls short. Click a row for the exact questions.</p>
+      <div class="onb-win" role="tablist" aria-label="Newcomer window">
+        <button data-nd="7">First 7 days</button>
+        <button data-nd="14" class="on">First 14 days</button>
+        <button data-nd="30">First 30 days</button>
+      </div>
+      <div id="onbList"><div class="empty">Loading onboarding signal…</div></div>
+      <div class="hs-legend">
+        <span><i style="background:var(--red)"></i>declined — no relevant doc found</span>
+        <span><i style="background:var(--amber)"></i>weak — answered but low confidence</span>
+      </div>
+    </section>
+
     <!-- ANNOUNCEMENT -->
     <section class="card c-announce" aria-label="Announcement">
       <div class="ctitle">
@@ -464,7 +490,7 @@ textarea{font-family:var(--font)}
 <script>
 "use strict";
 const $ = id => document.getElementById(id);
-const state = { days: 30, dimension: "process" };
+const state = { days: 30, dimension: "process", newcomerDays: 14 };
 const charts = {};   // id -> Chart instance
 const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const alpha  = (c,a) => c + Math.round(a*255).toString(16).padStart(2,"0");
@@ -775,6 +801,46 @@ async function loadGaps(){
   catch(err){ if (err.denied) lockout(); else { $("gapList").innerHTML = `<div class="empty">Could not load gaps.</div>`; console.error(err); } }
 }
 
+function renderOnboarding(data){
+  const topics = (data && data.topics) || [];
+  const total = (data && data.total) || 0;
+  const nd = (data && data.newcomer_days) || state.newcomerDays;
+  $("onbTotal").textContent = total ? `${total} in first ${nd} days` : "";
+  if (!topics.length){ $("onbList").innerHTML = `<div class="empty">No newcomer struggles in this range — early-tenure questions are being answered well.</div>`; return; }
+  const max = Math.max(...topics.map(t => t.count)) || 1;
+  $("onbList").innerHTML = topics.map((t, i) => {
+    const w = t.count / max * 100;
+    const lc = (t.kinds && t.kinds.low_confidence) || 0;
+    const dec = (t.kinds && t.kinds.declined) || 0;
+    const tot = lc + dec || 1;
+    const examples = (t.examples || []).map(q => `<li>${escAnn(q)}</li>`).join("");
+    return `<div class="gap-row" data-i="${i}">
+      <div class="gap-head">
+        <span class="gap-chev">▶</span>
+        <span class="gap-key" title="${escAnn(t.topic)}">${escAnn(t.topic)}</span>
+        <div class="gap-track">
+          <div class="gap-dec" data-w="${w * dec / tot}"></div>
+          <div class="gap-lc" data-w="${w * lc / tot}"></div>
+        </div>
+        <span class="gap-val"><b>${t.count}</b> stuck</span>
+      </div>
+      <ul class="gap-examples" hidden>${examples}</ul>
+    </div>`;
+  }).join("");
+  requestAnimationFrame(() =>
+    document.querySelectorAll("#onbList .gap-dec,#onbList .gap-lc").forEach(el => el.style.width = el.dataset.w + "%"));
+  document.querySelectorAll("#onbList .gap-head").forEach(h => h.addEventListener("click", () => {
+    const row = h.parentElement;
+    const ex = row.querySelector(".gap-examples");
+    ex.hidden = !ex.hidden;
+    row.classList.toggle("open", !ex.hidden);
+  }));
+}
+async function loadOnboarding(){
+  try{ renderOnboarding(await fetchJSON("/api/analytics/onboarding" + qs({newcomer_days: state.newcomerDays, limit: 12}))); }
+  catch(err){ if (err.denied) lockout(); else { $("onbList").innerHTML = `<div class="empty">Could not load onboarding signal.</div>`; console.error(err); } }
+}
+
 /* ── orchestration ─────────────────────────────────────────────── */
 function lockout(){
   document.body.innerHTML = `
@@ -800,6 +866,7 @@ async function load(){
     renderAdoption(trend);
     renderSourceMix(trend);
     loadGaps();   // additive panel; isolates its own errors so it never breaks the dashboard
+    loadOnboarding();
     $("updated").textContent = "Updated "+new Date().toLocaleTimeString()+" · live feedback signal";
     $("liveTxt").textContent = "Live";
   }catch(err){
@@ -845,6 +912,10 @@ document.querySelectorAll(".seg [data-days]").forEach(b => b.addEventListener("c
 document.querySelectorAll(".dims [data-dim]").forEach(b => b.addEventListener("click", () => {
   document.querySelectorAll(".dims [data-dim]").forEach(x => x.classList.remove("on"));
   b.classList.add("on"); state.dimension = b.dataset.dim; load();
+}));
+document.querySelectorAll(".onb-win [data-nd]").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll(".onb-win [data-nd]").forEach(x => x.classList.remove("on"));
+  b.classList.add("on"); state.newcomerDays = parseInt(b.dataset.nd, 10); loadOnboarding();
 }));
 $("refresh").addEventListener("click", load);
 $("annInput").addEventListener("input", annCount);

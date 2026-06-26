@@ -198,6 +198,15 @@ class QuestionGap(SQLModel, table=True):
     cluster_id: Optional[UUID] = Field(default=None, index=True)
     # Representative text for the cluster (the seed's query at creation time).
     cluster_label: Optional[str] = Field(default=None)
+    # Onboarding-funnel enrichment: the nearest-doc process/department this
+    # question is about (resolved via attribution at write time; None when no
+    # doc is close enough), and the asker's account age in days at ask time
+    # (None when the user/created_at couldn't be resolved). Together these let
+    # the /admin onboarding view answer "what do newcomers get stuck on, by
+    # topic" without re-deriving anything at read time.
+    topic: Optional[str] = Field(default=None, index=True)
+    department: Optional[str] = Field(default=None, index=True)
+    tenure_days: Optional[int] = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=utcnow, index=True)
     deleted_at: Optional[datetime] = Field(default=None, index=True)
 
@@ -239,31 +248,77 @@ def create_all(engine: Engine) -> None:
     _add_missing_columns(engine)
 
 
-def _add_missing_columns(engine: Engine) -> None:
-    """Dev convenience: additively add new nullable columns to existing tables.
+# Backends we additively migrate. Both SQLite (dev) and PostgreSQL (prod —
+# e.g. Neon) support fast, metadata-only `ALTER TABLE ... ADD COLUMN` for
+# nullable columns, so a single model-driven path keeps the two in lock-step.
+_MIGRATABLE_DIALECTS = {"sqlite", "postgresql"}
 
-    `create_all` creates missing tables but never ALTERs existing ones, so a
-    dev SQLite database created before a new column was added would be missing
-    it. This adds any missing *nullable* columns for SQLite only. Production
-    (Postgres) should use real migrations.
+
+def _add_missing_columns(engine: Engine) -> None:
+    """Additively bring existing tables up to the current model.
+
+    `create_all` creates *missing tables* but never touches existing ones, so a
+    database created before a column or index was added would lack it. This
+    closes that gap for the backends we actually run — SQLite (dev) and
+    PostgreSQL (prod) — by adding any missing **nullable** columns and creating
+    any missing indexes those columns declare. For nullable columns both are
+    fast, metadata-only operations on these engines (no table rewrite, safe
+    under load).
+
+    Best-effort and idempotent: every change is guarded by a reflection check
+    and wrapped so that a concurrent worker which already applied it — or any
+    one-off hiccup — can never break startup. Anything needing a backfill or a
+    NOT NULL/constraint change is still out of scope; that wants a real
+    migration tool.
     """
-    if engine.dialect.name != "sqlite":
+    if engine.dialect.name not in _MIGRATABLE_DIALECTS:
         return
     insp = inspect(engine)
     tables = set(insp.get_table_names())
     for table_name, table in SQLModel.metadata.tables.items():
         if table_name not in tables:
-            continue
-        existing = {c["name"] for c in insp.get_columns(table_name)}
+            continue  # brand-new table: create_all already built it in full
+        existing_cols = {c["name"] for c in insp.get_columns(table_name)}
         for col in table.columns:
-            if col.name in existing or not col.nullable:
+            if col.name in existing_cols or not col.nullable:
                 continue
             ddl_type = col.type.compile(dialect=engine.dialect)
-            with engine.begin() as conn:
-                conn.execute(
-                    text(f'ALTER TABLE "{table_name}" ADD COLUMN "{col.name}" {ddl_type}')
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(
+                        f'ALTER TABLE "{table_name}" '
+                        f'ADD COLUMN "{col.name}" {ddl_type}'
+                    ))
+                logger.info(
+                    "schema.column.added",
+                    extra={"table": table_name, "column": col.name},
                 )
-            logger.info(
-                "schema.column.added",
-                extra={"table": table_name, "column": col.name},
-            )
+            except Exception:
+                # Lost a startup race, or the column already exists despite the
+                # reflection check — the ALTER is the source of truth. Don't let
+                # a migration hiccup take down the process.
+                logger.warning(
+                    "schema.column.add_failed",
+                    extra={"table": table_name, "column": col.name},
+                    exc_info=True,
+                )
+
+        # Indexes the model declares (e.g. the onboarding columns are
+        # index=True) aren't created by create_all on an already-existing table.
+        # checkfirst makes each create idempotent on both engines.
+        existing_idx = {i["name"] for i in insp.get_indexes(table_name)}
+        for index in table.indexes:
+            if index.name in existing_idx:
+                continue
+            try:
+                index.create(bind=engine, checkfirst=True)
+                logger.info(
+                    "schema.index.created",
+                    extra={"table": table_name, "index": index.name},
+                )
+            except Exception:
+                logger.warning(
+                    "schema.index.create_failed",
+                    extra={"table": table_name, "index": index.name},
+                    exc_info=True,
+                )
