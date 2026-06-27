@@ -246,6 +246,44 @@ class TestExtractText:
         assert extract_text("noext", b"bytes", "application/pdf") == "PDF TEXT"
 
 
+_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+class TestMarkdownMode:
+    """markdown=True routes DOCX/PDF through the structured converters; the
+    default keeps the historical flat-text extraction. _download_text dispatch
+    only — the converters themselves are covered in test_document_preprocessor."""
+
+    def _source(self, markdown):
+        src = GoogleDriveSource(folder_id="f", credentials_path="{}", markdown=markdown)
+        src._get_service = lambda: MagicMock()  # no real Drive
+        return src
+
+    def test_markdown_mode_uses_structured_converter(self, monkeypatch):
+        monkeypatch.setattr(gds, "_download_bytes", lambda service, fid: b"raw")
+        monkeypatch.setattr(gds, "_docx_to_markdown", lambda data: "## Heading")
+        monkeypatch.setattr(gds, "_docx_to_text", lambda data: "flat")
+        out = self._source(markdown=True)._download_text(
+            {"id": "1", "name": "d.docx", "mimeType": _DOCX_MIME}
+        )
+        assert out == "## Heading"
+
+    def test_default_mode_uses_flat_text(self, monkeypatch):
+        monkeypatch.setattr(gds, "_download_bytes", lambda service, fid: b"raw")
+        monkeypatch.setattr(gds, "_docx_to_markdown", lambda data: "## Heading")
+        monkeypatch.setattr(gds, "_docx_to_text", lambda data: "flat")
+        out = self._source(markdown=False)._download_text(
+            {"id": "1", "name": "d.docx", "mimeType": _DOCX_MIME}
+        )
+        assert out == "flat"
+
+    def test_docx_markdown_falls_back_when_converter_unavailable(self, monkeypatch):
+        import document_preprocessor as dp
+        monkeypatch.setattr(dp, "docx_to_markdown", lambda data: (_ for _ in ()).throw(RuntimeError("boom")))
+        monkeypatch.setattr(gds, "_docx_to_text", lambda data: "flat fallback")
+        assert gds._docx_to_markdown(b"raw") == "flat fallback"
+
+
 # ---------------------------------------------------------------------------
 # Live integration tests — skipped unless credentials present
 # ---------------------------------------------------------------------------

@@ -11,7 +11,18 @@ import pytest
 from document_source import CompositeSource, LocalMarkdownSource
 from google_drive_source import GoogleDriveSource
 from main import build_source
+from preprocessing_source import PreprocessingSource
 from settings import Settings
+
+
+def _drive(src):
+    """Unwrap the preprocessing decorator (on by default) to the Drive source.
+
+    These tests exercise *source selection* — backend, credentials, recursion —
+    which is orthogonal to whether documents get preprocessed, so they look
+    through the `PreprocessingSource` wrapper to the underlying source.
+    """
+    return src._inner if isinstance(src, PreprocessingSource) else src
 
 
 @pytest.fixture(autouse=True)
@@ -44,16 +55,32 @@ def _settings(**overrides) -> Settings:
 
 
 def test_defaults_to_google_drive():
-    # Default is now Drive-only — production ingests from Google Drive.
+    # Default is now Drive-only — production ingests from Google Drive — and
+    # preprocessing is on by default, so the Drive source comes back wrapped.
     src = build_source(
         _settings(drive_folder_id="folder-123", google_service_account_json="sa.json")
+    )
+    assert isinstance(src, PreprocessingSource)
+    assert isinstance(_drive(src), GoogleDriveSource)
+    assert _drive(src).folder_id == "folder-123"
+
+
+def test_preprocess_disabled_returns_raw_drive_source():
+    # With preprocessing off, build_source returns the bare GoogleDriveSource.
+    src = build_source(
+        _settings(
+            drive_folder_id="folder-123",
+            google_service_account_json="sa.json",
+            preprocess_documents=False,
+        )
     )
     assert isinstance(src, GoogleDriveSource)
     assert src.folder_id == "folder-123"
 
 
 def test_all_combines_local_and_drive():
-    # "all" still combines local + Drive when Drive is configured.
+    # "all" still combines local + Drive when Drive is configured; only the
+    # Drive child is preprocessed (local markdown is already structured).
     src = build_source(
         _settings(
             document_source="all",
@@ -63,7 +90,8 @@ def test_all_combines_local_and_drive():
     )
     assert isinstance(src, CompositeSource)
     kinds = [type(s).__name__ for s in src._sources]
-    assert kinds == ["LocalMarkdownSource", "GoogleDriveSource"]
+    assert kinds == ["LocalMarkdownSource", "PreprocessingSource"]
+    assert isinstance(_drive(src._sources[1]), GoogleDriveSource)
 
 
 def test_all_without_drive_falls_back_to_local():
@@ -92,10 +120,10 @@ def test_google_drive_source_is_selected_and_configured():
             google_service_account_json="sa.json",
         )
     )
-    assert isinstance(src, GoogleDriveSource)
-    assert src.folder_id == "folder-123"
-    assert src.recursive is False
-    assert src._creds_path == "sa.json"
+    assert isinstance(_drive(src), GoogleDriveSource)
+    assert _drive(src).folder_id == "folder-123"
+    assert _drive(src).recursive is False
+    assert _drive(src)._creds_path == "sa.json"
 
 
 def test_google_drive_prefers_service_account_over_oauth():
@@ -107,7 +135,7 @@ def test_google_drive_prefers_service_account_over_oauth():
             google_oauth_credentials="oauth.json",
         )
     )
-    assert src._creds_path == "sa.json"
+    assert _drive(src)._creds_path == "sa.json"
 
 
 def test_google_drive_falls_back_to_oauth_credentials():
@@ -118,7 +146,7 @@ def test_google_drive_falls_back_to_oauth_credentials():
             google_oauth_credentials="oauth.json",
         )
     )
-    assert src._creds_path == "oauth.json"
+    assert _drive(src)._creds_path == "oauth.json"
 
 
 def test_google_drive_without_folder_id_raises():

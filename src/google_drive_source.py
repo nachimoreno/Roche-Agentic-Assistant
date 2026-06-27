@@ -117,6 +117,13 @@ class GoogleDriveSource:
     recursive:
         If True, walk sub-folders too. Default True — Roche docs are spread
         across subfolders so this should almost always stay True.
+    markdown:
+        If True, render DOCX/PDF into structured markdown (headings + real
+        tables) via the document_preprocessor converters, instead of the flat
+        paragraph dump used for retrieval historically. Default False keeps the
+        original behaviour; `main.build_source` flips it on when
+        `preprocess_documents` is set. Falls back to flat text extraction if
+        the converters or their deps are unavailable.
     """
 
     def __init__(
@@ -124,9 +131,11 @@ class GoogleDriveSource:
         folder_id: str,
         credentials_path: str | None = None,
         recursive: bool = True,
+        markdown: bool = False,
     ) -> None:
         self.folder_id = folder_id
         self.recursive = recursive
+        self._markdown = markdown
         self._creds_path = credentials_path or os.getenv(
             "GOOGLE_SERVICE_ACCOUNT_JSON",
             os.getenv("GOOGLE_OAUTH_CREDENTIALS"),
@@ -376,11 +385,11 @@ class GoogleDriveSource:
 
             elif mime == "application/pdf":
                 raw = _download_bytes(service, file_id)
-                return _pdf_to_text(raw)
+                return _pdf_to_markdown(raw) if self._markdown else _pdf_to_text(raw)
 
             elif mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
                 raw = _download_bytes(service, file_id)
-                return _docx_to_text(raw)
+                return _docx_to_markdown(raw) if self._markdown else _docx_to_text(raw)
 
             else:  # text/plain, text/markdown
                 raw = _download_bytes(service, file_id)
@@ -457,6 +466,32 @@ def _docx_to_text(content: bytes) -> str:
     except ImportError:
         logger.warning("python-docx not installed — DOCX text extraction unavailable")
         return "[DOCX: install python-docx to extract text]"
+
+def _pdf_to_markdown(content: bytes) -> str:
+    """Structured-markdown PDF rendering, reusing the document_preprocessor
+    converter. PDFs carry no structural info, so this is mostly the same text
+    with blank-line cleanup. Falls back to flat extraction if the preprocessor
+    or pypdf is unavailable, so markdown mode never hard-fails an ingest."""
+    try:
+        from document_preprocessor import pdf_to_markdown
+        return pdf_to_markdown(content)
+    except Exception:
+        logger.warning("drive.pdf_markdown_fallback", exc_info=True)
+        return _pdf_to_text(content)
+
+
+def _docx_to_markdown(content: bytes) -> str:
+    """Structured-markdown DOCX rendering (headings -> #/##, tables -> markdown
+    tables) via the document_preprocessor converter. This is where markdown
+    mode earns its keep for retrieval. Falls back to the flat paragraph dump if
+    the preprocessor or python-docx is unavailable."""
+    try:
+        from document_preprocessor import docx_to_markdown
+        return docx_to_markdown(content)
+    except Exception:
+        logger.warning("drive.docx_markdown_fallback", exc_info=True)
+        return _docx_to_text(content)
+
 
 def extract_text(filename: str, data: bytes, mime_type: str = "") -> str:
     """Extract plain text from uploaded bytes, dispatching on extension/MIME.

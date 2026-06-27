@@ -23,6 +23,7 @@ from conversation_layer import ConversationLayer
 from db import create_all, make_engine, new_id
 from document_source import CompositeSource, DocumentSource, LocalMarkdownSource
 from google_drive_source import GoogleDriveSource
+from preprocessing_source import wrap_if_enabled
 from embeddings import FastEmbedProvider
 from incident_intake import IncidentIntake
 from lexical_index import BM25Index
@@ -45,7 +46,13 @@ logger = logging.getLogger(__name__)
 
 
 def build_drive_source(settings: Settings) -> GoogleDriveSource:
-    """Construct the Google Drive source from settings (caller checks config)."""
+    """Construct the Google Drive source from settings (caller checks config).
+
+    `markdown` mirrors `preprocess_documents` so DOCX/PDF are rendered as
+    structured markdown during ingest. It's a no-op for the health probe and
+    upload paths (which never call the markdown download branch), so passing it
+    unconditionally here is safe.
+    """
     return GoogleDriveSource(
         folder_id=settings.drive_folder_id,
         credentials_path=(
@@ -53,6 +60,7 @@ def build_drive_source(settings: Settings) -> GoogleDriveSource:
             or settings.google_oauth_credentials
         ),
         recursive=settings.drive_recursive,
+        markdown=settings.preprocess_documents,
     )
 
 
@@ -69,17 +77,26 @@ def build_source(settings: Settings) -> DocumentSource:
     if settings.document_source == "local":
         return local
 
+    # Drive docs get the in-memory preprocessing pass (markdown rendering is on
+    # the source itself; process/department tagging via this wrapper). Local
+    # markdown is left untouched — it's already structured and carries its own
+    # front-matter labels.
+    def _drive(settings: Settings) -> DocumentSource:
+        return wrap_if_enabled(
+            build_drive_source(settings), enabled=settings.preprocess_documents
+        )
+
     if settings.document_source == "google_drive":
         if not settings.drive_folder_id:
             raise ValueError(
                 "document_source='google_drive' requires drive_folder_id "
                 "(set DRIVE_FOLDER_ID in .env)."
             )
-        return build_drive_source(settings)
+        return _drive(settings)
 
     # "all": local always, plus Drive when configured.
     if settings.drive_folder_id:
-        return CompositeSource([local, build_drive_source(settings)])
+        return CompositeSource([local, _drive(settings)])
 
     logger.warning(
         "source.all.drive_unconfigured",

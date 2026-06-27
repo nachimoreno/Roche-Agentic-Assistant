@@ -99,6 +99,13 @@ class Settings(BaseSettings):
     drive_recursive: bool = True
     google_service_account_json: Optional[str] = None
     google_oauth_credentials: Optional[str] = None
+    # Preprocess Drive documents at ingest: render DOCX/PDF into structured
+    # markdown (headings + real tables) and tag each doc with process/department.
+    # Runs in-memory as the corpus streams into ingest() — no disk round-trip,
+    # which suits the ephemeral Hugging Face Space filesystem (the corpus is
+    # rebuilt from Drive on every cold start anyway). Only affects Drive docs;
+    # local markdown is already structured. See preprocessing_source.py.
+    preprocess_documents: bool = True
 
     # ---- HTTP server -----------------------------------------------
     host: str = "127.0.0.1"
