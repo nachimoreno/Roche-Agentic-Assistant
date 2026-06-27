@@ -18,6 +18,7 @@ import logging
 import re
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
@@ -44,7 +45,18 @@ _RRF_K = 60
 # re-chunked even though their content hash is unchanged. Without this, the
 # manifest's hash check would treat a doc as "unchanged" and keep stale chunks
 # produced by the old logic.
-_CHUNK_SCHEME_VERSION = 2
+#
+# v3: contradiction-handling metadata (modified_at/version/effective_date/
+# status/supersedes) is now carried onto chunks; front-matter is stripped before
+# hashing, so adding those keys doesn't change a doc's content hash — bumping the
+# scheme forces the one-time corpus re-embed that lands the new chunk metadata.
+_CHUNK_SCHEME_VERSION = 3
+
+# Metadata keys that drive contradiction handling — recency/version signals
+# carried from doc front-matter onto each chunk (alongside process/department)
+# so the deterministic version-dedup resolver and the in-prompt conflict
+# detector can both read them. See Contradiction_Handling_Design.md §5–6.
+_CONFLICT_META_KEYS = ("version", "effective_date", "status", "owner", "supersedes")
 
 
 @dataclass
@@ -81,6 +93,29 @@ class _DocChunk:
     metadata: dict[str, Any]
 
 
+def _doc_meta_record(doc: SourceDocument) -> dict[str, Optional[str]]:
+    """The citation/resolution metadata stored per source_id on every ingest.
+
+    `process`/`department`/`title`/`url` drive citation→process attribution and
+    clickable links; `modified_at` plus the front-matter recency keys
+    (`version`/`effective_date`/`status`/`owner`/`supersedes`) feed the
+    contradiction resolver. `modified_at` is normalised to an ISO string so the
+    record is plain-JSON (matching what's stored on chunk metadata).
+    """
+    record: dict[str, Optional[str]] = {
+        "process": doc.metadata.get("process"),
+        "department": doc.metadata.get("department"),
+        "title": doc.title,
+        # Deep link to the source (e.g. Drive webViewLink); used to make
+        # citations clickable. Empty/absent for sources without URLs.
+        "url": doc.metadata.get("url"),
+        "modified_at": doc.modified_at.isoformat() if doc.modified_at else None,
+    }
+    for key in _CONFLICT_META_KEYS:
+        record[key] = doc.metadata.get(key)
+    return record
+
+
 class DocumentStore:
     def __init__(
         self,
@@ -97,9 +132,11 @@ class DocumentStore:
         self._manifest_path = Path(manifest_path)
         # When set, retrieval is hybrid (dense + BM25). When None, dense-only.
         self._lexical = lexical_index
-        # source_id -> {"process", "department", "title"} for citation→process
-        # attribution. Populated on every ingest for *all* docs seen (including
-        # unchanged ones that skip re-embedding).
+        # source_id -> citation/resolution metadata (process, department, title,
+        # url, modified_at + conflict keys; see `_doc_meta_record`) for
+        # citation→process attribution and the contradiction resolver. Populated
+        # on every ingest for *all* docs seen (including unchanged ones that skip
+        # re-embedding).
         self._doc_meta: dict[str, dict[str, Optional[str]]] = {}
 
     # ------------------------------------------------------------------
@@ -115,17 +152,11 @@ class DocumentStore:
 
         for doc in self._source.list_documents():
             seen += 1
-            # Record process/department for every doc seen, even if its content
-            # is unchanged and we skip re-embedding below — the citation→process
-            # lookup must cover the whole corpus, not just docs touched this run.
-            self._doc_meta[doc.id] = {
-                "process": doc.metadata.get("process"),
-                "department": doc.metadata.get("department"),
-                "title": doc.title,
-                # Deep link to the source (e.g. Drive webViewLink); used to make
-                # citations clickable. Empty/absent for sources without URLs.
-                "url": doc.metadata.get("url"),
-            }
+            # Record metadata for every doc seen, even if its content is
+            # unchanged and we skip re-embedding below — the citation→process
+            # lookup (and the conflict resolver) must cover the whole corpus, not
+            # just docs touched this run.
+            self._doc_meta[doc.id] = _doc_meta_record(doc)
             content_hash = _hash(doc.content)
             entry = {
                 "hash": content_hash,
@@ -234,12 +265,7 @@ class DocumentStore:
         }
         self._save_manifest(manifest)
 
-        self._doc_meta[doc.id] = {
-            "process": doc.metadata.get("process"),
-            "department": doc.metadata.get("department"),
-            "title": doc.title,
-            "url": doc.metadata.get("url"),
-        }
+        self._doc_meta[doc.id] = _doc_meta_record(doc)
 
         # Rebuild the lexical index from the full corpus so BM25 and dense
         # retrieval stay in lockstep (cheap at MVP scale).
@@ -253,10 +279,12 @@ class DocumentStore:
         return len(doc_chunks)
 
     def doc_metadata(self, source_id: str) -> Optional[dict[str, Optional[str]]]:
-        """Process/department/title for a document id, or None if unknown.
+        """Citation/resolution metadata for a document id, or None if unknown.
 
-        Populated during `ingest`; the key is `SourceDocument.id`, which is also
-        what the agent emits as `Citation.source`.
+        Includes process/department/title/url plus recency keys (modified_at,
+        version, effective_date, status, owner, supersedes). Populated during
+        `ingest`; the key is `SourceDocument.id`, which is also what the agent
+        emits as `Citation.source`.
         """
         return self._doc_meta.get(source_id)
 
@@ -279,13 +307,17 @@ class DocumentStore:
         # Dense-only path (no lexical index configured).
         if self._lexical is None:
             chunks = self._store.query(embedding=embedding, k=k)
+            # Best dense score is the retrieval-confidence signal; capture it
+            # before version-dedup, which may drop the top chunk as a stale copy.
+            max_dense = chunks[0].score if chunks else 0.0
+            chunks = _collapse_superseded(chunks)
             logger.info(
                 "retrieval.done",
                 extra={"mode": "dense", "k": k, "returned": len(chunks)},
             )
             return RetrievalResult(
                 chunks=chunks,
-                max_dense=chunks[0].score if chunks else 0.0,
+                max_dense=max_dense,
                 max_lexical=0.0,
             )
 
@@ -293,7 +325,12 @@ class DocumentStore:
         pool = max(k, _HYBRID_POOL)
         dense = self._store.query(embedding=embedding, k=pool)
         lexical = self._lexical.search(query, k=pool)
-        fused = _reciprocal_rank_fusion([dense, lexical], k=k)
+        # Collapse superseded versions on the final fused ranking so a stale copy
+        # never competes with its current replacement in the context (Case A —
+        # see Contradiction_Handling_Design.md §7). max_dense/max_lexical come
+        # from the un-collapsed pools, so dropping a stale top hit doesn't
+        # understate confidence.
+        fused = _collapse_superseded(_reciprocal_rank_fusion([dense, lexical], k=k))
         logger.info(
             "retrieval.done",
             extra={
@@ -362,6 +399,200 @@ def _reciprocal_rank_fusion(
 
 
 # ---------------------------------------------------------------------------
+# Version-dedup — Case A (stale-version) resolution
+#
+# Before the LLM sees the context, collapse chunks belonging to a *superseded*
+# version of a document so a stale copy never competes with its current
+# replacement. This resolves the Google-Drive "multiple versions" problem
+# (architecture §2.2) deterministically and shrinks what reaches the in-prompt
+# conflict detector down to genuine Case-B disagreements. Pure functions over
+# already-fetched chunk metadata — no LLM, no Chroma, fully unit-testable.
+# See Contradiction_Handling_Design.md §7.
+# ---------------------------------------------------------------------------
+
+# Tokens like "v2" / "version 3" / "rev. 4" are stripped before comparing
+# titles, so "Cleaning Lab Devices v2" and "Cleaning Lab Devices v3" normalise
+# to the same identity.
+_VERSION_TOKEN_RE = re.compile(r"\b(?:v|ver|version|rev|revision)\.?\s*\d+\b", re.IGNORECASE)
+# Title similarity at/above which two same-process docs are treated as versions
+# of one logical document. Deliberately high: the confident-identity guard errs
+# toward *not* collapsing, so an uncertain pair is left for conflict detection
+# rather than silently dropped (Contradiction_Handling_Design.md §7, §13).
+_TITLE_SIMILARITY = 0.8
+
+
+def _collapse_superseded(chunks: list[Chunk]) -> list[Chunk]:
+    """Drop chunks of any document a newer version supersedes.
+
+    Groups chunks by *logical-document identity* and, within each group, keeps
+    only the chunks of the newest doc. Identity is taken only when **confident**:
+    an explicit `supersedes` chain, or an identical `process` plus a near-
+    identical normalised title. When identity is uncertain the docs are left
+    untouched for in-prompt conflict detection to treat as a potential genuine
+    disagreement — we never silently drop a doc we can't prove is a stale
+    version. Recency is decided by `effective_date`, falling back to
+    `modified_at`; a doc explicitly `status: deprecated` is always dropped when a
+    non-deprecated sibling exists.
+
+    Preserves input order of the surviving chunks. A no-op (returns the input
+    list) when nothing is superseded, so the common case is free.
+    """
+    if len(chunks) < 2:
+        return list(chunks)
+
+    sources = _source_snapshots(chunks)
+    if len(sources) < 2:
+        return list(chunks)  # all chunks from one doc — nothing to collapse
+
+    # An explicit `supersedes: X` declares direction outright: X is stale and is
+    # forced out whenever its superseder is also present, regardless of dates.
+    explicitly_stale: set[str] = set()
+    uf = _UnionFind(sources.keys())
+    for sid, meta in sources.items():
+        for target in _supersedes_targets(meta.get("supersedes")):
+            if target in sources:
+                uf.union(sid, target)
+                explicitly_stale.add(target)
+
+    # Heuristic identity (confident only): same process + near-identical title.
+    sids = list(sources)
+    for i, a in enumerate(sids):
+        for b in sids[i + 1:]:
+            if _same_logical_doc(sources[a], sources[b]):
+                uf.union(a, b)
+
+    groups: dict[str, list[str]] = defaultdict(list)
+    for sid in sources:
+        groups[uf.find(sid)].append(sid)
+
+    keep: set[str] = set()
+    for members in groups.values():
+        if len(members) == 1:
+            keep.add(members[0])
+            continue
+        # Prefer a doc no present sibling explicitly supersedes; among those pick
+        # the newest current one. Fall back to the whole group if the chain
+        # somehow marked every member stale (cyclic/ill-formed front-matter).
+        candidates = [m for m in members if m not in explicitly_stale] or members
+        keep.add(max(candidates, key=lambda m: _recency_key(sources[m])))
+
+    if len(keep) == len(sources):
+        return list(chunks)  # nothing dropped
+    return [c for c in chunks if c.metadata.get("source_id") in keep]
+
+
+def _source_snapshots(chunks: list[Chunk]) -> dict[str, dict[str, Any]]:
+    """One metadata snapshot per source_id (first chunk wins; all agree)."""
+    out: dict[str, dict[str, Any]] = {}
+    for c in chunks:
+        sid = c.metadata.get("source_id")
+        if not sid or sid in out:
+            continue
+        m = c.metadata
+        out[sid] = {
+            "process": m.get("process"),
+            "title": m.get("title") or "",
+            "status": str(m.get("status") or "").strip().lower(),
+            "effective_date": m.get("effective_date"),
+            "modified_at": m.get("modified_at"),
+            "supersedes": m.get("supersedes"),
+        }
+    return out
+
+
+def _same_logical_doc(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """True when two docs are confidently the same logical document.
+
+    Requires an identical (non-empty) `process` and a near-identical normalised
+    title. The strict bar is intentional — see `_TITLE_SIMILARITY`.
+    """
+    pa, pb = a.get("process"), b.get("process")
+    if not pa or pa != pb:
+        return False
+    return _title_similar(a.get("title") or "", b.get("title") or "")
+
+
+def _normalize_title(title: str) -> str:
+    """Lowercase, strip version tokens, collapse to alphanumeric words."""
+    t = _VERSION_TOKEN_RE.sub(" ", title.lower())
+    t = re.sub(r"[^a-z0-9]+", " ", t)
+    return " ".join(t.split())
+
+
+def _title_similar(a: str, b: str) -> bool:
+    na, nb = _normalize_title(a), _normalize_title(b)
+    if not na or not nb:
+        return False
+    if na == nb:
+        return True
+    ta, tb = set(na.split()), set(nb.split())
+    if not ta or not tb:
+        return False
+    return len(ta & tb) / len(ta | tb) >= _TITLE_SIMILARITY
+
+
+def _supersedes_targets(value: Any) -> list[str]:
+    """Source ids a `supersedes` value names (comma/space separated)."""
+    if not value:
+        return []
+    return [t.strip() for t in re.split(r"[,\s]+", str(value)) if t.strip()]
+
+
+def _recency_key(meta: dict[str, Any]) -> tuple[bool, float]:
+    """Sort key for picking the surviving version: (is_current, recency).
+
+    A non-deprecated doc always outranks a deprecated sibling; among equals the
+    later effective_date (else modified_at) wins.
+    """
+    is_current = meta.get("status") != "deprecated"
+    return (is_current, _recency_seconds(meta))
+
+
+def _recency_seconds(meta: dict[str, Any]) -> float:
+    dt = _parse_dt(meta.get("effective_date")) or _parse_dt(meta.get("modified_at"))
+    return dt.timestamp() if dt is not None else 0.0
+
+
+def _parse_dt(value: Any) -> Optional[datetime]:
+    """Parse an ISO date or datetime to a UTC-aware datetime, else None.
+
+    Naive inputs (a bare `effective_date: 2026-05-01`) are pinned to UTC so they
+    compare consistently against tz-aware `modified_at` timestamps.
+    """
+    if not value:
+        return None
+    s = str(value).strip().replace("Z", "+00:00")
+    for candidate in (s, f"{s}T00:00:00+00:00"):
+        try:
+            dt = datetime.fromisoformat(candidate)
+        except ValueError:
+            continue
+        return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+    return None
+
+
+class _UnionFind:
+    """Tiny union-find over source ids for grouping logical-document versions."""
+
+    def __init__(self, items: Iterable[str]) -> None:
+        self._parent = {i: i for i in items}
+
+    def find(self, x: str) -> str:
+        root = x
+        while self._parent[root] != root:
+            root = self._parent[root]
+        # Path-compress so repeated finds stay near-flat.
+        while self._parent[x] != root:
+            self._parent[x], x = root, self._parent[x]
+        return root
+
+    def union(self, a: str, b: str) -> None:
+        ra, rb = self.find(a), self.find(b)
+        if ra != rb:
+            self._parent[ra] = rb
+
+
+# ---------------------------------------------------------------------------
 # Chunking
 # ---------------------------------------------------------------------------
 
@@ -384,9 +615,15 @@ def _chunk_document(doc: SourceDocument):
                 "section_index": section_index,
                 "chunk_index": chunk_index,
             }
-            # Carry process/department onto each chunk so the embedding fallback
-            # can read them off the nearest chunk for orphan feedback.
-            for key in ("process", "department"):
+            # Recency signal for version-dedup + the in-prompt conflict detector;
+            # an ISO string keeps chunk metadata plain-JSON / Chroma-safe (no
+            # datetime, no None). effective_date front-matter overrides it.
+            if doc.modified_at is not None:
+                metadata["modified_at"] = doc.modified_at.isoformat()
+            # Carry process/department (embedding-fallback attribution) plus the
+            # contradiction-handling recency/version keys onto each chunk so the
+            # resolver and the LLM can read them off the chunk directly.
+            for key in ("process", "department", *_CONFLICT_META_KEYS):
                 value = doc.metadata.get(key)
                 if value is not None:
                     metadata[key] = value

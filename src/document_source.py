@@ -21,6 +21,22 @@ from typing import Any, Iterable, Iterator, Protocol
 logger = logging.getLogger(__name__)
 
 
+# Front-matter keys carried onto document/chunk metadata. `process`/`department`
+# are topic labels (attribution); the rest power contradiction handling —
+# `version`/`effective_date`/`status` let the model/resolver reason about
+# recency, and `supersedes` is the explicit stale-version chain. See
+# architecture/Contradiction_Handling_Design.md §5.
+_FRONT_MATTER_KEYS = (
+    "process",
+    "department",
+    "version",
+    "effective_date",
+    "status",
+    "owner",
+    "supersedes",
+)
+
+
 @dataclass
 class SourceDocument:
     """A document pulled from a source, normalized for the ingestion pipeline."""
@@ -81,7 +97,11 @@ class LocalMarkdownSource:
             front, content = parse_front_matter(raw)
             title = _first_h1(content) or md_path.stem
             metadata: dict[str, Any] = {"path": str(md_path)}
-            for key in ("process", "department"):
+            # process/department are topic labels; version/effective_date/status/
+            # owner/supersedes feed the contradiction-handling resolver (version-
+            # dedup + in-prompt conflict detection — see
+            # architecture/Contradiction_Handling_Design.md). All optional.
+            for key in _FRONT_MATTER_KEYS:
                 if front.get(key):
                     metadata[key] = front[key]
             yield SourceDocument(

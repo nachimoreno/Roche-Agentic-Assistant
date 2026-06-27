@@ -210,6 +210,7 @@ class ChatResponse(BaseModel):
     turn_id: Optional[str] = None      # the assistant turn, for rating
     follow_ups: list[str] = []         # suggested next questions (chips)
     low_confidence: bool = False       # weak grounding -> show a verify badge
+    conflict: bool = False             # sources disagree -> show a conflict badge
 
 
 class SessionItemOut(BaseModel):
@@ -756,6 +757,7 @@ def chat(
         turn_id=str(resp.turn_id) if resp.turn_id else None,
         follow_ups=resp.follow_ups,
         low_confidence=resp.low_confidence,
+        conflict=resp.conflict,
     )
 
 
@@ -819,6 +821,7 @@ def chat_stream(
                         "turn_id": str(ev.turn_id) if ev.turn_id else None,
                         "follow_ups": ev.follow_ups,
                         "low_confidence": ev.low_confidence,
+                        "conflict": ev.conflict,
                     })
         except Exception as exc:
             category, detail = _error_category(exc)
@@ -973,6 +976,25 @@ def analytics_onboarding(
     gaps: QuestionGapRepository = request.app.state.question_gaps
     return gaps.onboarding(
         newcomer_days=max(1, min(newcomer_days, 365)),
+        since=_since(days),
+        tenant_id=user.tenant_id,
+        limit=max(1, min(limit, 50)),
+    )
+
+
+@app.get("/api/analytics/conflicts")
+def analytics_conflicts(
+    request: Request,
+    days: Optional[int] = None,
+    limit: int = 20,
+    user: User = Depends(require_admin),
+):
+    """Contradicting documents: pairs of sources the assistant surfaced as
+    disagreeing, ranked by how often they clash. A contradiction is a
+    documentation-quality defect — this is the reconcile-this worklist for doc
+    owners (Contradiction_Handling_Design.md §9.2)."""
+    gaps: QuestionGapRepository = request.app.state.question_gaps
+    return gaps.conflict_pairs(
         since=_since(days),
         tenant_id=user.tenant_id,
         limit=max(1, min(limit, 50)),

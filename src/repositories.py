@@ -628,6 +628,7 @@ class QuestionGapRepository:
         topic: Optional[str] = None,
         department: Optional[str] = None,
         tenure_days: Optional[int] = None,
+        conflict_sources: Optional[str] = None,
         tenant_id: Optional[UUID] = None,
     ) -> QuestionGap:
         """Record one documentation-gap turn, assigning it to a topic cluster.
@@ -635,6 +636,8 @@ class QuestionGapRepository:
         `topic`/`department` (nearest-doc process) and `tenure_days` (asker's
         account age) are optional onboarding-funnel enrichment, resolved by the
         orchestrator; clustering and the gaps panel work without them.
+        `conflict_sources` (comma-joined source ids) is set only for
+        `kind="conflict"` rows, feeding the contradicting-pairs panel.
         """
         query = (query or "").strip()
         vector = self._embed(query)
@@ -650,6 +653,7 @@ class QuestionGapRepository:
             topic=topic,
             department=department,
             tenure_days=tenure_days,
+            conflict_sources=conflict_sources,
             embedding=json.dumps(vector) if vector is not None else None,
         )
 
@@ -696,6 +700,17 @@ class QuestionGapRepository:
             stmt = stmt.where(QuestionGap.tenant_id == tenant_id)
         return stmt
 
+    def _gap_scoped(self, stmt, since: Optional[datetime], tenant_id: Optional[UUID]):
+        """`_scoped` restricted to true documentation gaps (declined / weak).
+
+        Conflict rows live in the same table but are a different signal with
+        their own panel (`conflict_pairs`), so the gaps total/clusters/onboarding
+        views exclude them to keep their counts about missing-or-unclear docs.
+        """
+        return self._scoped(stmt, since, tenant_id).where(
+            QuestionGap.kind != "conflict"  # type: ignore[arg-type]
+        )
+
     def clusters(
         self,
         *,
@@ -711,7 +726,7 @@ class QuestionGapRepository:
         first), and when it was last seen. Bucketed in Python so the same code
         runs on SQLite and Postgres; gap volume is small at MVP scale.
         """
-        stmt = self._scoped(select(QuestionGap), since, tenant_id).order_by(
+        stmt = self._gap_scoped(select(QuestionGap), since, tenant_id).order_by(
             QuestionGap.created_at.desc()  # type: ignore[union-attr]
         )
         with DbSession(self._engine) as db:
@@ -746,8 +761,8 @@ class QuestionGapRepository:
         since: Optional[datetime] = None,
         tenant_id: Optional[UUID] = None,
     ) -> int:
-        """Total gap rows in scope (handy for a dashboard headline number)."""
-        stmt = self._scoped(
+        """Total documentation-gap rows in scope (excludes conflict rows)."""
+        stmt = self._gap_scoped(
             select(func.count()).select_from(QuestionGap), since, tenant_id
         )
         with DbSession(self._engine) as db:
@@ -772,7 +787,7 @@ class QuestionGapRepository:
         total alongside the ranked topics. Python-side bucketing keeps it
         portable across SQLite and Postgres at MVP scale.
         """
-        stmt = self._scoped(select(QuestionGap), since, tenant_id).where(
+        stmt = self._gap_scoped(select(QuestionGap), since, tenant_id).where(
             QuestionGap.tenure_days.is_not(None),  # type: ignore[union-attr]
             QuestionGap.tenure_days <= newcomer_days,  # type: ignore[operator]
         ).order_by(QuestionGap.created_at.desc())  # type: ignore[union-attr]
@@ -803,6 +818,53 @@ class QuestionGapRepository:
             "total": len(rows),
             "topics": ranked[:limit],
         }
+
+    def conflict_pairs(
+        self,
+        *,
+        since: Optional[datetime] = None,
+        tenant_id: Optional[UUID] = None,
+        limit: int = 20,
+        examples_per_pair: int = 5,
+    ) -> dict:
+        """Document pairs that most often contradict each other, biggest first.
+
+        Aggregates `kind="conflict"` rows by their (sorted) set of conflicting
+        source ids — the worklist a doc owner reconciles. Each entry carries the
+        source ids, how many turns surfaced that contradiction, a few example
+        questions, and when it was last seen. `total` is the number of conflict
+        turns with a resolvable pair. Python-side bucketing keeps it portable
+        across SQLite and Postgres at MVP scale, matching `clusters`/`onboarding`.
+        """
+        stmt = self._scoped(select(QuestionGap), since, tenant_id).where(
+            QuestionGap.kind == "conflict",  # type: ignore[arg-type]
+        ).order_by(QuestionGap.created_at.desc())  # type: ignore[union-attr]
+        with DbSession(self._engine) as db:
+            rows = list(db.exec(stmt).all())
+
+        buckets: dict[str, dict] = {}
+        total = 0
+        for r in rows:
+            sources = sorted({s for s in (r.conflict_sources or "").split(",") if s})
+            if len(sources) < 2:
+                continue  # a pair needs at least two docs to contradict
+            total += 1
+            key = "\x1f".join(sources)  # unit-separator can't appear in an id
+            b = buckets.get(key)
+            if b is None:
+                b = {
+                    "sources": sources,
+                    "count": 0,
+                    "examples": [],
+                    "last_seen": r.created_at.isoformat(),
+                }
+                buckets[key] = b
+            b["count"] += 1
+            if len(b["examples"]) < examples_per_pair and r.query not in b["examples"]:
+                b["examples"].append(r.query)
+
+        ranked = sorted(buckets.values(), key=lambda b: b["count"], reverse=True)
+        return {"total": total, "pairs": ranked[:limit]}
 
 
 # ---------------------------------------------------------------------------

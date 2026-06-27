@@ -184,8 +184,9 @@ class QuestionGap(SQLModel, table=True):
     # The exact question (the spell-corrected retrieval query when available),
     # kept verbatim for drill-down.
     query: str
-    # Why this turn was a gap: "low_confidence" (answered but weakly grounded)
-    # or "declined" (off-domain guardrail refused).
+    # Why this turn was a gap: "low_confidence" (answered but weakly grounded),
+    # "declined" (off-domain guardrail refused), or "conflict" (two current docs
+    # gave materially different answers — the contradiction signal).
     kind: str = Field(index=True)
     language: Optional[str] = Field(default=None, index=True)
     # Top per-retriever scores at answer time ([0, 1] scale), for later tuning.
@@ -207,6 +208,12 @@ class QuestionGap(SQLModel, table=True):
     topic: Optional[str] = Field(default=None, index=True)
     department: Optional[str] = Field(default=None, index=True)
     tenure_days: Optional[int] = Field(default=None, index=True)
+    # For kind=="conflict": the source ids of the documents that disagreed,
+    # comma-joined and sorted, so the admin dashboard can rank document pairs
+    # that most often contradict and route them to owners. None for other kinds.
+    # A column on the existing table (per OD-2) keeps conflicts in one place; a
+    # normalized doc-pair table is the alternative if pair analytics grow.
+    conflict_sources: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, index=True)
     deleted_at: Optional[datetime] = Field(default=None, index=True)
 

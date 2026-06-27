@@ -545,6 +545,40 @@ GAP_TOPIC = {
     "Applying for a parking permit":      ("facilities", 0.80),
 }
 
+# Demo contradicting-document pairs for the conflicts panel: two *distinct,
+# current* docs whose answers materially disagree (Case B), surfaced over
+# several questions. `sources` are the conflicting doc ids; `topic` maps to the
+# doc process. These are what the contradiction handler flags as `conflict` and
+# routes to owners (Contradiction_Handling_Design.md §9.2).
+CONFLICT_PAIRS = [
+    {
+        "sources": ["06_cleaning_lab_devices.md", "07_decontamination.md"],
+        "topic": "cleaning", "n": 5,
+        "queries": [
+            "What concentration of ethanol for cleaning the centrifuge?",
+            "Which solvent do I use to clean lab devices?",
+            "Is it 70% ethanol or 90% isopropyl for decontamination?",
+        ],
+    },
+    {
+        "sources": ["04_booking_instruments.md", "02_navigating_internal_apps.md"],
+        "topic": "booking", "n": 3,
+        "queries": [
+            "How far ahead can I reserve an instrument?",
+            "What's the maximum advance booking window?",
+            "Can I book the analyzer two weeks out or just one?",
+        ],
+    },
+    {
+        "sources": ["01_onboarding_access_requests.md", "08_virtual_session_troubleshooting.md"],
+        "topic": "access", "n": 2,
+        "queries": [
+            "How long until a new access request is approved?",
+            "Is account provisioning 2 days or 4 working hours?",
+        ],
+    },
+]
+
 
 def seed_gaps(
     *,
@@ -611,10 +645,45 @@ def seed_gaps(
                 row.cluster_label = spec["label"]
                 db.add(row)
                 total += 1
+
+        # Contradicting-document pairs (kind="conflict") for the conflicts panel.
+        # Confident answers that nonetheless surfaced two disagreeing sources, so
+        # they carry no declined/low_confidence split — only the conflicting ids.
+        conflicts = 0
+        for pair in CONFLICT_PAIRS:
+            for _ in range(pair["n"]):
+                is_newcomer = rng.random() < 0.4
+                row = QuestionGap(
+                    session_id=rng.choice(session_ids),
+                    tenant_id=DEMO_TENANT_ID,
+                    query=rng.choice(pair["queries"]),
+                    kind="conflict",
+                    language="english",
+                    topic=pair["topic"],
+                    tenure_days=rng.randint(0, 13) if is_newcomer else rng.randint(20, 179),
+                    # A conflict is a confident answer (cleared both floors) that
+                    # happened to cite two disagreeing docs.
+                    retrieval_max_dense=round(rng.uniform(0.55, 0.78), 3),
+                    retrieval_max_lexical=round(rng.uniform(0.4, 0.9), 3),
+                    conflict_sources=",".join(sorted(pair["sources"])),
+                    embedding=None,
+                    created_at=_backdate(rng, now, days),
+                )
+                # Conflicts aren't part of the gap topic-clusters; each is its
+                # own seed so the shared cluster columns stay well-formed.
+                row.cluster_id = row.id
+                row.cluster_label = " vs ".join(pair["sources"])
+                db.add(row)
+                conflicts += 1
+                total += 1
+
         db.commit()
 
-    logger.info("demo_seed.gaps.seeded", extra={"rows": total, "clusters": len(GAP_CLUSTERS)})
-    return {"total": total, "clusters": len(GAP_CLUSTERS)}
+    logger.info(
+        "demo_seed.gaps.seeded",
+        extra={"rows": total, "clusters": len(GAP_CLUSTERS), "conflicts": conflicts},
+    )
+    return {"total": total, "clusters": len(GAP_CLUSTERS), "conflicts": conflicts}
 
 
 def demo_gap_count(engine: Engine) -> int:

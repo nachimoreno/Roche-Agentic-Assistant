@@ -177,6 +177,11 @@ class AnswerResult(BaseModel):
     # Distinguishes a real decline from a normal weakly-grounded answer so the
     # orchestrator can log it as a documentation gap. See `_off_domain`.
     declined: bool = Field(default=False)
+    # Set by the MODEL (in-prompt conflict detection, rule 2): True when two
+    # sources materially disagreed and the answer surfaced both. Threaded to a
+    # "sources disagree — verify" UI badge and the conflict analytics. Unlike the
+    # server-set flags above we keep the model's value rather than overwriting.
+    conflict: bool = Field(default=False)
     # Top per-retriever scores for this turn (both on a [0, 1] scale), surfaced
     # so the orchestrator can persist them on a gap row for later tuning.
     # None on paths that never retrieved (e.g. capability questions short-circuit).
@@ -225,20 +230,29 @@ type of question, follow the rules below strictly.
       information and suggest where to look (for example, the Application
       Catalog or ServiceNow). Do not ask a clarifying question in this case.
    A clarifying question needs no citations.
-2. Respond in {language}. If the context is in English, translate your
+2. Conflicting sources. This is distinct from the ambiguity in rule 1a (which
+   is "which thing did you mean?"); here the documents themselves disagree. If
+   two context chunks give materially different answers to the SAME question —
+   different values, steps, or thresholds, not mere wording — do NOT silently
+   choose one. State plainly that the documentation disagrees, give each
+   position with its own citation, and only if one source is clearly more recent
+   (later modified="...") or marked status="current" note which appears
+   authoritative — while still advising the scientist to verify. Set
+   "conflict": true when you do this.
+3. Respond in {language}. If the context is in English, translate your
    answer into {language} naturally.
-3. Be concise and direct. Scientists are often standing in a lab — give
+4. Be concise and direct. Scientists are often standing in a lab — give
    them the answer first, then the explanation if needed.
-4. Cite the sources you used. Every claim that comes from a context chunk
+5. Cite the sources you used. Every claim that comes from a context chunk
    must be backed by a citation. For capability questions answered from
    the summary above, citations may be empty.
-5. Do not invent procedures, product names, or values that are not in the
+6. Do not invent procedures, product names, or values that are not in the
    context.
-6. If the message is only a greeting or thanks (for example "hi" or "thank
+7. If the message is only a greeting or thanks (for example "hi" or "thank
    you"), reply in one warm line and offer a concrete example of what to ask
    — such as how to clean a centrifuge or how to request access to a lab
    application. No citations.
-7. If the request is clearly outside what you cover — general world facts,
+8. If the request is clearly outside what you cover — general world facts,
    public-web lookups, or anything unrelated to lab operations — say in one
    line that it is outside what you cover and point to where to look (for
    example the Application Catalog or ServiceNow). No citations.
@@ -258,13 +272,15 @@ cite, copy the source="..." identifier into "source" and the section="..."
 value into "section" — never merge them, and never put the document="..."
 title into "source".
 
-Return ONLY a JSON object with three fields:
+Return ONLY a JSON object with four fields:
 - "text": your answer in {language}
 - "citations": a list of objects with "source" (the source="..." identifier)
   and "section" (the section heading), one for each context chunk you relied on.
 - "follow_ups": a list of 2-3 short follow-up questions, in {language}, that the
   scientist might naturally ask next — each grounded in the same documentation
   and phrased as a complete question. Use an empty list if none fit.
+- "conflict": true only when two sources materially disagree and you surfaced
+  both per rule 2; otherwise false.
 """
 
 
@@ -281,13 +297,15 @@ Write your complete answer in {language} as plain prose (no JSON, no
 markdown code fences). When the answer is finished, output a line containing
 exactly:
 ---CITATIONS---
-and then a single JSON object with two fields:
+and then a single JSON object with three fields:
 - "citations": a list of objects with "source" (the source="..." identifier)
   and "section" (the section heading), one per context chunk you relied on (an
   empty list [] if you used none).
 - "follow_ups": a list of 2-3 short follow-up questions, in {language}, that the
   scientist might naturally ask next — each grounded in the same documentation
   and phrased as a complete question (an empty list [] if none fit).
+- "conflict": true only when two sources materially disagree and you surfaced
+  both per rule 2; otherwise false.
 Output nothing after the JSON object.
 """
 
@@ -318,6 +336,7 @@ class AnswerComplete:
     follow_ups: list[str] = field(default_factory=list)
     low_confidence: bool = False
     declined: bool = False
+    conflict: bool = False
     retrieval_max_dense: Optional[float] = None
     retrieval_max_lexical: Optional[float] = None
 
@@ -427,6 +446,10 @@ class RAGAgent:
             max_tokens=self._max_tokens,
         )
         result = AnswerResult.model_validate(payload)
+        # `conflict` is the model's call (in-prompt detection), so it survives
+        # validation untouched — unlike low_confidence/declined which are
+        # server-set below. _dedupe_citations keeps one row per source, so two
+        # disagreeing documents both survive and are cited.
         result.citations = _dedupe_citations(result.citations)
         result.follow_ups = _clean_follow_ups(result.follow_ups)
         result.low_confidence = self._low_confidence(retrieval)
@@ -441,6 +464,7 @@ class RAGAgent:
                 "citations": len(result.citations),
                 "follow_ups": len(result.follow_ups),
                 "low_confidence": result.low_confidence,
+                "conflict": result.conflict,
             },
         )
         return result
@@ -515,7 +539,7 @@ class RAGAgent:
             prose.append(tail)
             yield TextDelta(tail)
 
-        citations, follow_ups = _parse_tail(splitter.citation_tail)
+        citations, follow_ups, conflict = _parse_tail(splitter.citation_tail)
         citations = _dedupe_citations(citations)
         self._enrich_titles(citations)
         low_confidence = self._low_confidence(retrieval)
@@ -527,6 +551,7 @@ class RAGAgent:
                 "citations": len(citations),
                 "follow_ups": len(follow_ups),
                 "low_confidence": low_confidence,
+                "conflict": conflict,
             },
         )
         yield AnswerComplete(
@@ -534,6 +559,7 @@ class RAGAgent:
             citations=citations,
             follow_ups=follow_ups,
             low_confidence=low_confidence,
+            conflict=conflict,
             retrieval_max_dense=retrieval.max_dense,
             retrieval_max_lexical=retrieval.max_lexical,
         )
@@ -658,30 +684,33 @@ def _parse_citations(tail: str) -> list[Citation]:
         return []
 
 
-def _parse_tail(tail: str) -> tuple[list[Citation], list[str]]:
-    """Parse the streamed post-sentinel tail into citations and follow-ups.
+def _parse_tail(tail: str) -> tuple[list[Citation], list[str], bool]:
+    """Parse the streamed post-sentinel tail into citations, follow-ups, conflict.
 
     The current contract is a JSON object {"citations": [...],
-    "follow_ups": [...]}, but a bare citations array (the previous format, or a
-    model that ignored the object instruction) is also accepted so a malformed
-    tail degrades to "citations only, no follow-ups" rather than losing both.
+    "follow_ups": [...], "conflict": bool}, but a bare citations array (the
+    previous format, or a model that ignored the object instruction) is also
+    accepted so a malformed tail degrades to "citations only, no follow-ups, no
+    conflict" rather than losing everything. `conflict` defaults to False on any
+    malformed or non-boolean value, mirroring the other flags.
     """
     tail = tail.strip()
     if not tail:
-        return [], []
+        return [], [], False
     try:
         data = json.loads(tail)
     except Exception:
         logger.warning("agent.stream.tail_unparseable", extra={"tail": tail[:200]})
-        return [], []
+        return [], [], False
     try:
         if isinstance(data, list):
-            return [Citation.model_validate(c) for c in data], []
+            return [Citation.model_validate(c) for c in data], [], False
         citations = [Citation.model_validate(c) for c in data.get("citations", [])]
-        return citations, _clean_follow_ups(data.get("follow_ups", []))
+        conflict = data.get("conflict") is True
+        return citations, _clean_follow_ups(data.get("follow_ups", [])), conflict
     except Exception:
         logger.warning("agent.stream.tail_invalid", extra={"tail": tail[:200]})
-        return [], []
+        return [], [], False
 
 
 def _retrieval_query(message: str, history: Sequence[Turn]) -> str:
@@ -717,6 +746,19 @@ def _format_context(chunks) -> str:
             parts.append(f'document="{title}"')
         if section:
             parts.append(f'section="{section}"')
+        # Surface recency/version so the model can reason about which side of a
+        # disagreement is newer / authoritative (conflict detection, §6.1). Use
+        # effective_date when present, else the file's modified_at; show only the
+        # date part to keep the header compact.
+        effective = c.metadata.get("effective_date") or c.metadata.get("modified_at")
+        if effective:
+            parts.append(f'modified="{str(effective)[:10]}"')
+        version = c.metadata.get("version")
+        if version is not None:
+            parts.append(f'version="{version}"')
+        status = c.metadata.get("status")
+        if status:
+            parts.append(f'status="{status}"')
         header = "[" + " ".join(parts) + "]"
         blocks.append(f"{header}\n{c.text}")
     return "\n\n---\n\n".join(blocks)

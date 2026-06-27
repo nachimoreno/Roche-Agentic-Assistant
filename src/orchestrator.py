@@ -60,6 +60,7 @@ class Response:
     turn_id: Optional[UUID] = None      # the assistant turn, for rating
     follow_ups: list[str] = field(default_factory=list)
     low_confidence: bool = False        # weak grounding -> show a verify badge
+    conflict: bool = False              # sources disagree -> show a conflict badge
 
 
 # ---------------------------------------------------------------------------
@@ -89,6 +90,7 @@ class StreamDone:
     turn_id: Optional[UUID] = None      # the assistant turn, for rating
     follow_ups: list[str] = field(default_factory=list)
     low_confidence: bool = False        # weak grounding -> show a verify badge
+    conflict: bool = False              # sources disagree -> show a conflict badge
 
 
 StreamEvent = Union[StreamMeta, StreamToken, StreamDone]
@@ -291,6 +293,75 @@ class Assistant:
         except Exception:
             logger.warning("gap.log_failed", extra={"session_id": str(session_id)})
 
+    def _log_conflict(
+        self,
+        *,
+        answer,
+        analysis: AnalysisResult,
+        session_id: UUID,
+        turn_id: Optional[UUID],
+        message: str,
+        tenant_id: Optional[UUID],
+        user_id: Optional[str] = None,
+    ) -> None:
+        """Record a surfaced source conflict as a `kind="conflict"` gap row.
+
+        Mirrors `_log_question_gap` but on the conflict signal: when the model
+        flagged that two current docs materially disagreed (`answer.conflict`),
+        log the turn with the **conflicting source ids** so the admin dashboard
+        can rank contradicting document pairs and route them to owners. A turn
+        can be both a gap and a conflict — the two are logged independently.
+
+        Needs at least two cited sources to form a pair; if the model flagged a
+        conflict without citing both, there's nothing to route, so skip. Topic /
+        tenure enrichment matches the gap path. Best-effort and non-fatal: a
+        logging hiccup must never break the turn.
+        """
+        if self._gaps is None or not getattr(answer, "conflict", False):
+            return
+        sources = sorted({
+            c.source for c in getattr(answer, "citations", []) if getattr(c, "source", None)
+        })
+        if len(sources) < 2:
+            logger.info(
+                "conflict.skipped_single_source",
+                extra={"session_id": str(session_id), "sources": len(sources)},
+            )
+            return
+        query = (analysis.corrected_query or message or "").strip()
+        if not query:
+            return
+
+        topic = department = None
+        if self._attribution is not None:
+            try:
+                result = self._attribution.resolve_from_text(query)
+                if result.rows:
+                    topic = result.rows[0].process
+                    department = result.rows[0].department
+            except Exception:
+                pass
+
+        tenure_days = self._tenure_days(user_id, utcnow())
+
+        try:
+            self._gaps.add(
+                session_id=session_id,
+                turn_id=turn_id,
+                query=query,
+                kind="conflict",
+                language=analysis.language,
+                retrieval_max_dense=getattr(answer, "retrieval_max_dense", None),
+                retrieval_max_lexical=getattr(answer, "retrieval_max_lexical", None),
+                topic=topic,
+                department=department,
+                tenure_days=tenure_days,
+                conflict_sources=",".join(sources),
+                tenant_id=tenant_id,
+            )
+        except Exception:
+            logger.warning("conflict.log_failed", extra={"session_id": str(session_id)})
+
     # ------------------------------------------------------------------
     # Incident handling
     # ------------------------------------------------------------------
@@ -424,6 +495,15 @@ class Assistant:
             tenant_id=tenant_id,
             user_id=user_id,
         )
+        self._log_conflict(
+            answer=answer,
+            analysis=analysis,
+            session_id=session_id,
+            turn_id=assistant_turn.id,
+            message=message,
+            tenant_id=tenant_id,
+            user_id=user_id,
+        )
 
         return Response(
             text=answer.text,
@@ -432,6 +512,7 @@ class Assistant:
             turn_id=assistant_turn.id,
             follow_ups=answer.follow_ups,
             low_confidence=answer.low_confidence,
+            conflict=answer.conflict,
         )
 
     def handle_stream(
@@ -521,6 +602,7 @@ class Assistant:
         citations: list[Citation] = []
         follow_ups: list[str] = []
         low_confidence = False
+        conflict = False
         complete: Optional[AnswerComplete] = None
         try:
             for piece in self._agent.answer_stream(
@@ -537,6 +619,7 @@ class Assistant:
                     citations = piece.citations
                     follow_ups = piece.follow_ups
                     low_confidence = piece.low_confidence
+                    conflict = piece.conflict
                     complete = piece
         except GeneratorExit:
             # Client disconnected mid-stream (Stop button, closed tab). The
@@ -571,12 +654,22 @@ class Assistant:
                 tenant_id=tenant_id,
                 user_id=user_id,
             )
+            self._log_conflict(
+                answer=complete,
+                analysis=analysis,
+                session_id=session_id,
+                turn_id=assistant_turn.id,
+                message=message,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
         yield StreamDone(
             text=full_text,
             citations=citations,
             turn_id=assistant_turn.id,
             follow_ups=follow_ups,
             low_confidence=low_confidence,
+            conflict=conflict,
         )
 
     def record_rating(

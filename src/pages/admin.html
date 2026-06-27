@@ -202,6 +202,13 @@ textarea{font-family:var(--font)}
 .gap-examples li{font-size:12.5px;color:var(--t2);padding:5px 0 5px 14px;position:relative}
 .gap-examples li::before{content:"\203A";position:absolute;left:0;color:var(--t4)}
 
+/* contradicting documents — reuses the .gap-* row styles, full width */
+.c-conflicts{grid-column:span 12}
+.cf-pair{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;font-weight:600;color:var(--t1);overflow:hidden}
+.cf-doc{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-f);padding:1px 8px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px}
+.cf-vs{color:var(--red);font-weight:700;font-size:11px}
+.gap-cf{height:100%;width:0;background:var(--red);transition:width 1s cubic-bezier(.2,.7,.2,1)}
+
 /* onboarding funnel — reuses the .gap-* row styles, full width */
 .c-onboarding{grid-column:span 12}
 .onb-win{display:inline-flex;gap:0;border:1px solid var(--border-2);border-radius:var(--r);overflow:hidden;margin:-2px 0 12px;vertical-align:middle}
@@ -442,6 +449,16 @@ textarea{font-family:var(--font)}
         <span><i style="background:var(--red)"></i>declined — no relevant doc found</span>
         <span><i style="background:var(--amber)"></i>weak — answered but low confidence</span>
       </div>
+    </section>
+
+    <!-- CONTRADICTING DOCUMENTS -->
+    <section class="card c-conflicts" aria-label="Contradicting documents">
+      <div class="ctitle">
+        <span class="tico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+        Contradicting documents <small id="cfTotal"></small>
+      </div>
+      <p class="gap-intro">Document pairs the assistant surfaced as <b style="color:var(--red)">giving conflicting answers</b> to the same question, ranked by how often they clash — a reconcile-this worklist for doc owners. Click a row for the exact questions.</p>
+      <div id="cfList"><div class="empty">Loading contradictions…</div></div>
     </section>
 
     <!-- ONBOARDING FUNNEL -->
@@ -841,6 +858,41 @@ async function loadOnboarding(){
   catch(err){ if (err.denied) lockout(); else { $("onbList").innerHTML = `<div class="empty">Could not load onboarding signal.</div>`; console.error(err); } }
 }
 
+/* ── contradicting documents: pairs of docs that disagree ───────── */
+function renderConflicts(data){
+  const pairs = (data && data.pairs) || [];
+  const total = (data && data.total) || 0;
+  $("cfTotal").textContent = total ? `${total} flagged` : "";
+  if (!pairs.length){ $("cfList").innerHTML = `<div class="empty">No contradicting documents in this range — sources agree where they overlap.</div>`; return; }
+  const max = Math.max(...pairs.map(p => p.count)) || 1;
+  $("cfList").innerHTML = pairs.map((p, i) => {
+    const w = p.count / max * 100;
+    const docs = (p.sources || []).map(s => `<span class="cf-doc" title="${escAnn(s)}">${escAnn(s)}</span>`).join(`<span class="cf-vs">vs</span>`);
+    const examples = (p.examples || []).map(q => `<li>${escAnn(q)}</li>`).join("");
+    return `<div class="gap-row" data-i="${i}">
+      <div class="gap-head">
+        <span class="gap-chev">▶</span>
+        <span class="cf-pair">${docs}</span>
+        <div class="gap-track"><div class="gap-cf" data-w="${w}"></div></div>
+        <span class="gap-val"><b>${p.count}</b> hit${p.count === 1 ? "" : "s"}</span>
+      </div>
+      <ul class="gap-examples" hidden>${examples}</ul>
+    </div>`;
+  }).join("");
+  requestAnimationFrame(() =>
+    document.querySelectorAll("#cfList .gap-cf").forEach(el => el.style.width = el.dataset.w + "%"));
+  document.querySelectorAll("#cfList .gap-head").forEach(h => h.addEventListener("click", () => {
+    const row = h.parentElement;
+    const ex = row.querySelector(".gap-examples");
+    ex.hidden = !ex.hidden;
+    row.classList.toggle("open", !ex.hidden);
+  }));
+}
+async function loadConflicts(){
+  try{ renderConflicts(await fetchJSON("/api/analytics/conflicts" + qs({limit: 12}))); }
+  catch(err){ if (err.denied) lockout(); else { $("cfList").innerHTML = `<div class="empty">Could not load contradictions.</div>`; console.error(err); } }
+}
+
 /* ── orchestration ─────────────────────────────────────────────── */
 function lockout(){
   document.body.innerHTML = `
@@ -866,6 +918,7 @@ async function load(){
     renderAdoption(trend);
     renderSourceMix(trend);
     loadGaps();   // additive panel; isolates its own errors so it never breaks the dashboard
+    loadConflicts();
     loadOnboarding();
     $("updated").textContent = "Updated "+new Date().toLocaleTimeString()+" · live feedback signal";
     $("liveTxt").textContent = "Live";

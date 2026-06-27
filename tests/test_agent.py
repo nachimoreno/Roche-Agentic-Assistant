@@ -649,15 +649,15 @@ def test_clean_follow_ups_dedupes_strips_and_caps():
 
 
 def test_parse_tail_accepts_object_array_and_malformed():
-    cits, fups = _parse_tail(
+    cits, fups, conflict = _parse_tail(
         '{"citations": [{"source":"a","section":"s"}], "follow_ups": ["q1"]}'
     )
-    assert [c.source for c in cits] == ["a"] and fups == ["q1"]
+    assert [c.source for c in cits] == ["a"] and fups == ["q1"] and conflict is False
     # Bare array (legacy form / model ignored the object instruction).
-    cits, fups = _parse_tail('[{"source":"a","section":"s"}]')
-    assert [c.source for c in cits] == ["a"] and fups == []
+    cits, fups, conflict = _parse_tail('[{"source":"a","section":"s"}]')
+    assert [c.source for c in cits] == ["a"] and fups == [] and conflict is False
     # Garbage degrades to empty, no raise.
-    assert _parse_tail("not json at all") == ([], [])
+    assert _parse_tail("not json at all") == ([], [], False)
 
 
 # ---------------------------------------------------------------------------
