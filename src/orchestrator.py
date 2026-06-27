@@ -26,6 +26,7 @@ from agent import (
     AnswerResult,
     Citation,
     RAGAgent,
+    RetrievalInfo,
     TextDelta,
     Turn as AgentTurn,
 )
@@ -75,6 +76,15 @@ class StreamMeta:
 
 
 @dataclass
+class StreamSources:
+    """Emitted once after retrieval, before tokens: what the assistant consulted
+    (for the "searching… N sources" transparency cue in the UI)."""
+
+    count: int
+    sources: list[str] = field(default_factory=list)
+
+
+@dataclass
 class StreamToken:
     """A delta of assistant text to append in the UI."""
 
@@ -93,7 +103,7 @@ class StreamDone:
     conflict: bool = False              # sources disagree -> show a conflict badge
 
 
-StreamEvent = Union[StreamMeta, StreamToken, StreamDone]
+StreamEvent = Union[StreamMeta, StreamSources, StreamToken, StreamDone]
 
 
 # ---------------------------------------------------------------------------
@@ -611,7 +621,9 @@ class Assistant:
                 history=history,
                 retrieval_query=analysis.corrected_query,
             ):
-                if isinstance(piece, TextDelta):
+                if isinstance(piece, RetrievalInfo):
+                    yield StreamSources(count=piece.count, sources=piece.sources)
+                elif isinstance(piece, TextDelta):
                     full_text += piece.text
                     yield StreamToken(text=piece.text)
                 elif isinstance(piece, AnswerComplete):

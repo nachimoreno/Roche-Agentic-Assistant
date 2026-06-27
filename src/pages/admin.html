@@ -136,16 +136,28 @@ textarea{font-family:var(--font)}
 .spark i{height:100%;border-radius:99px;transition:width .9s cubic-bezier(.2,.7,.2,1)}
 
 /* ── CHART CARDS ───────────────────────────────────────────────── */
+/* desktop spans, tuned so each themed section tiles to the 12-col grid */
 .c-trend{grid-column:span 8}
-.c-ratings{grid-column:span 4}
-.c-quality{grid-column:span 8}
-.c-sentiment{grid-column:span 4}
-.c-hotspots{grid-column:span 7}
-.c-emotions{grid-column:span 5}
-.c-adoption{grid-column:span 6}
+.c-adoption{grid-column:span 4}
+.c-quality{grid-column:span 6}
 .c-source{grid-column:span 6}
+.c-ratings{grid-column:span 4}
+.c-sentiment{grid-column:span 4}
 .c-langs{grid-column:span 4}
-.c-announce{grid-column:span 8}
+.c-emotions{grid-column:span 12}
+.c-hotspots{grid-column:span 7}
+.c-announce{grid-column:span 12}
+
+/* section header bars + thematic grouping via CSS order (no DOM reorder) */
+.sec{grid-column:1 / -1;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:16px 2px 0;padding-bottom:9px;border-bottom:1px solid var(--border)}
+.sec:first-of-type{margin-top:0}
+.sec-t{font-size:12.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--t1)}
+.sec-d{font-size:12px;color:var(--t4)}
+.sec-1{order:0} .kpi{order:1}
+.sec-2{order:10} .c-trend{order:11} .c-adoption{order:12} .c-quality{order:13} .c-source{order:14}
+.sec-3{order:20} .c-ratings{order:21} .c-sentiment{order:22} .c-langs{order:23} .c-emotions{order:24}
+.sec-4{order:30} .c-hotspots{order:31} .c-topq{order:32} .c-gaps{order:33} .c-onboarding{order:34}
+.sec-5{order:40} .c-announce{order:41}
 .chartbox{position:relative;height:264px}
 .chartbox.sm{height:236px}
 .donut-wrap{position:relative;height:236px;display:flex;align-items:center;justify-content:center}
@@ -180,6 +192,16 @@ textarea{font-family:var(--font)}
 
 /* languages */
 .lang-foot{margin-top:14px;font-size:11.5px;color:var(--t4);line-height:1.5}
+
+/* most-asked questions */
+.c-topq{grid-column:span 5}
+.tq-row{display:grid;grid-template-columns:1fr 96px;gap:16px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}
+.tq-row:last-child{border-bottom:0}
+.tq-q{font-size:13px;color:var(--t1);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tq-bar{height:8px;background:var(--surface-2);border-radius:99px;overflow:hidden;margin-top:7px}
+.tq-bar i{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--blue-h),var(--blue));transition:width 1s cubic-bezier(.2,.7,.2,1)}
+.tq-val{font-size:12px;color:var(--t3);text-align:right;font-variant-numeric:tabular-nums}
+.tq-val b{color:var(--t1);font-weight:700;font-size:14px}
 
 /* documentation gaps */
 .c-gaps{grid-column:span 12}
@@ -247,11 +269,16 @@ textarea{font-family:var(--font)}
 
 @media(max-width:1080px){
   .kpi{grid-column:span 6}
-  .c-trend,.c-quality,.c-hotspots,.c-adoption,.c-source,.c-announce{grid-column:span 12}
-  .c-ratings,.c-sentiment,.c-emotions,.c-langs{grid-column:span 6}
+  .c-trend,.c-quality,.c-hotspots,.c-emotions,.c-topq,.c-gaps,.c-onboarding,.c-announce{grid-column:span 12}
+  .c-ratings,.c-sentiment,.c-langs,.c-adoption,.c-source{grid-column:span 6}
+}
+/* Held/viewed vertically (portrait): one clean column, sections stacked. */
+@media(orientation:portrait){
+  .grid{grid-template-columns:1fr}
+  .grid>section{grid-column:auto}
 }
 @media(max-width:620px){
-  .kpi,.c-ratings,.c-sentiment,.c-emotions,.c-adoption,.c-source,.c-langs{grid-column:span 12}
+  .kpi,.c-ratings,.c-sentiment,.c-emotions,.c-adoption,.c-source,.c-langs,.c-topq{grid-column:span 12}
   .wrap{padding:18px 14px 48px}.hdr{padding:0 14px}.hdr-name,.hdr-title{display:none}
   .pagehead{align-items:flex-start}
 }
@@ -301,6 +328,13 @@ textarea{font-family:var(--font)}
   </div>
 
   <div class="grid">
+    <!-- Section headers — placed via CSS `order` to group the cards into blocks -->
+    <div class="sec sec-1"><span class="sec-t">Overview</span><span class="sec-d">Volume, helpfulness and the current hotspot</span></div>
+    <div class="sec sec-2"><span class="sec-t">Activity over time</span><span class="sec-d">How usage and feedback evolve day to day</span></div>
+    <div class="sec sec-3"><span class="sec-t">Satisfaction &amp; sentiment</span><span class="sec-d">How scientists rate and feel about answers</span></div>
+    <div class="sec sec-4"><span class="sec-t">Where answers fall short</span><span class="sec-d">Hotspots, top questions, gaps and onboarding</span></div>
+    <div class="sec sec-5"><span class="sec-t">Operations</span><span class="sec-d">Broadcast a banner to all scientists</span></div>
+
     <!-- KPI ROW -->
     <section class="card kpi" style="--accent:var(--blue)">
       <div class="kicon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
@@ -435,6 +469,15 @@ textarea{font-family:var(--font)}
       </div>
       <div class="donut-wrap sm"><canvas id="langChart"></canvas></div>
       <div class="lang-foot">Includes volunteered feedback and rated-answer comments. Soft-deleted entries excluded.</div>
+    </section>
+
+    <!-- MOST ASKED QUESTIONS -->
+    <section class="card c-topq" aria-label="Most asked questions">
+      <div class="ctitle">
+        <span class="tico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="13" y2="13"/></svg></span>
+        Most asked questions <small>what scientists ask most</small>
+      </div>
+      <div id="tqList"><div class="empty">Loading questions…</div></div>
     </section>
 
     <!-- DOCUMENTATION GAPS -->
@@ -818,6 +861,27 @@ async function loadGaps(){
   catch(err){ if (err.denied) lockout(); else { $("gapList").innerHTML = `<div class="empty">Could not load gaps.</div>`; console.error(err); } }
 }
 
+/* most-asked questions — what scientists are actually asking */
+function renderTopQuestions(data){
+  const qs2 = (data && data.questions) || [];
+  if (!qs2.length){ $("tqList").innerHTML = `<div class="empty">No questions in this range yet</div>`; return; }
+  const max = Math.max(...qs2.map(q => q.count)) || 1;
+  $("tqList").innerHTML = qs2.map(q => `
+    <div class="tq-row">
+      <div>
+        <div class="tq-q" title="${escAnn(q.question)}">${escAnn(q.question)}</div>
+        <div class="tq-bar"><i data-w="${q.count / max * 100}"></i></div>
+      </div>
+      <span class="tq-val"><b>${q.count}</b> ask${q.count === 1 ? "" : "s"}</span>
+    </div>`).join("");
+  requestAnimationFrame(() =>
+    document.querySelectorAll(".tq-bar i").forEach(el => el.style.width = el.dataset.w + "%"));
+}
+async function loadTopQuestions(){
+  try{ renderTopQuestions(await fetchJSON("/api/analytics/top-questions" + qs({limit: 10}))); }
+  catch(err){ if (err.denied) lockout(); else { $("tqList").innerHTML = `<div class="empty">Could not load.</div>`; console.error(err); } }
+}
+
 function renderOnboarding(data){
   const topics = (data && data.topics) || [];
   const total = (data && data.total) || 0;
@@ -917,6 +981,7 @@ async function load(){
     renderActivity(trend);
     renderAdoption(trend);
     renderSourceMix(trend);
+    loadTopQuestions();   // additive panels; each isolates its own errors
     loadGaps();   // additive panel; isolates its own errors so it never breaks the dashboard
     loadConflicts();
     loadOnboarding();

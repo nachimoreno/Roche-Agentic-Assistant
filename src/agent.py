@@ -321,6 +321,16 @@ _STREAM_SYSTEM_PROMPT_TEMPLATE = _SYSTEM_PROMPT_HEAD + _STREAM_OUTPUT
 # ---------------------------------------------------------------------------
 
 @dataclass
+class RetrievalInfo:
+    """Emitted once, right after retrieval and before any prose, so the UI can
+    show what the assistant consulted ("searching… N sources found") for
+    transparency. `sources` are distinct document titles, best-effort."""
+
+    count: int
+    sources: list[str] = field(default_factory=list)
+
+
+@dataclass
 class TextDelta:
     """A piece of prose answer text, safe to forward to the client."""
 
@@ -341,7 +351,7 @@ class AnswerComplete:
     retrieval_max_lexical: Optional[float] = None
 
 
-StreamPiece = Union[TextDelta, AnswerComplete]
+StreamPiece = Union[TextDelta, AnswerComplete, RetrievalInfo]
 
 
 class RAGAgent:
@@ -512,6 +522,14 @@ class RAGAgent:
             return
 
         chunks = retrieval.chunks
+        # Surface what we consulted, before any prose, for retrieval transparency.
+        seen: list[str] = []
+        for c in chunks:
+            title = c.metadata.get("title") or c.metadata.get("source_id")
+            if title and title not in seen:
+                seen.append(title)
+        yield RetrievalInfo(count=len(seen), sources=seen[:5])
+
         context = _format_context(chunks)
         system = _STREAM_SYSTEM_PROMPT_TEMPLATE.format(
             language=language,
@@ -542,6 +560,10 @@ class RAGAgent:
         citations, follow_ups, conflict = _parse_tail(splitter.citation_tail)
         citations = _dedupe_citations(citations)
         self._enrich_titles(citations)
+        # A conflict is only meaningful when at least two distinct sources are
+        # actually cited; otherwise there's no pair to disagree, so drop the flag
+        # before it reaches the badge (ported from dev's contradiction guard).
+        conflict = conflict and len({c.source for c in citations}) >= 2
         low_confidence = self._low_confidence(retrieval)
         logger.info(
             "agent.streamed",

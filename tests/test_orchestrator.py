@@ -23,7 +23,13 @@ from db import create_all, make_engine, new_id
 from document_source import LocalMarkdownSource
 from embeddings import FastEmbedProvider
 from llm import GroqClient, LLMClient
-from orchestrator import Assistant, StreamDone, StreamMeta, StreamToken
+from orchestrator import (
+    Assistant,
+    StreamDone,
+    StreamMeta,
+    StreamSources,
+    StreamToken,
+)
 from repositories import FeedbackRepository, SessionRepository
 from retrieval import DocumentStore
 from settings import Settings
@@ -417,7 +423,8 @@ def test_stream_aborted_midway_does_not_persist_assistant_turn(fake_assistant):
     sid = new_id()
     gen = assistant.handle_stream(sid, "How do I clean the centrifuge?")
 
-    assert isinstance(next(gen), StreamMeta)        # consume meta
+    assert isinstance(next(gen), StreamMeta)         # consume meta
+    assert isinstance(next(gen), StreamSources)      # retrieval-transparency event
     assert isinstance(next(gen), StreamToken)        # consume first token
     gen.close()                                      # abort while mid-stream
 

@@ -104,6 +104,15 @@ textarea,input{font-family:var(--font)}
   background:var(--t1);color:var(--bg);font-size:11px;font-weight:500;white-space:nowrap;
   padding:4px 8px;border-radius:var(--r);pointer-events:none;z-index:10;opacity:.9;
 }
+/* language switcher */
+.lang-wrap{position:relative;flex-shrink:0}
+#langBtn{width:auto;gap:5px;padding:0 9px;font-size:11.5px;font-weight:700;letter-spacing:.3px}
+.lang-code{color:inherit}
+.lang-menu{position:absolute;top:calc(100% + 6px);right:0;min-width:140px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--s-lg);padding:5px;display:none;z-index:300}
+.lang-menu.open{display:block;animation:msgIn .15s}
+.lang-menu button{display:block;width:100%;text-align:left;padding:8px 11px;border-radius:var(--r);font-size:13px;color:var(--t2);transition:all var(--tx)}
+.lang-menu button:hover{background:var(--surface-2);color:var(--t1)}
+.lang-menu button.active{color:var(--blue);background:var(--blue-light);font-weight:600}
 
 .btn-new{
   display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--surface);
@@ -240,6 +249,9 @@ textarea,input{font-family:var(--font)}
 .lang-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:var(--r-f);background:var(--surface-2);color:var(--t3);border:1px solid var(--border);letter-spacing:.3px}
 
 /* Response body */
+.retr-note{display:flex;align-items:center;gap:7px;padding:8px 16px 8px 19px;font-size:12px;color:var(--t3);background:var(--blue-light);border-bottom:1px solid var(--border);animation:msgIn .2s}
+.retr-note svg{color:var(--blue);flex-shrink:0}
+.retr-note b{color:var(--t2);font-weight:700}
 .response-body{padding:16px 20px 16px 19px;font-size:14px;color:var(--t1);line-height:1.78;position:relative;transition:color .3s}
 .response-body.stream-active::after{content:'▋';animation:blink .7s step-end infinite;color:var(--blue);font-size:13px}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
@@ -281,6 +293,18 @@ textarea,input{font-family:var(--font)}
 .cit-sub{font-size:11.5px;color:var(--t4)}
 /* Low-confidence ("verify this") caution banner under an answer */
 .low-conf{display:flex;gap:8px;align-items:flex-start;margin:10px 20px 4px;padding:9px 12px;background:var(--amber-l);border:1px solid rgba(217,119,6,.3);border-radius:var(--r);font-size:12px;line-height:1.45;color:var(--amber)}
+.chk{margin:10px 0 2px;border:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface);box-shadow:var(--s-sm);overflow:hidden;animation:msgIn .2s}
+.chk-head{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border);font-size:12.5px;font-weight:600;color:var(--t2);background:var(--surface-2)}
+.chk-head svg{color:var(--blue)}
+.chk-prog{margin-left:auto;font-size:12px;font-weight:700;color:var(--t3);font-variant-numeric:tabular-nums}
+.chk-prog.all{color:var(--green)}
+.chk-item{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13.5px;color:var(--t1);line-height:1.5;transition:background var(--tx)}
+.chk-item:last-child{border-bottom:0}
+.chk-item:hover{background:var(--surface-2)}
+.chk-item input{margin-top:2px;width:16px;height:16px;accent-color:var(--blue);flex-shrink:0;cursor:pointer}
+.chk-n{flex-shrink:0;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;background:var(--blue-light);color:var(--blue);border-radius:99px;font-size:10.5px;font-weight:700;margin-top:1px}
+.chk-item.done .chk-tx{text-decoration:line-through;color:var(--t4)}
+.chk-item.done .chk-n{background:var(--green);color:#fff}
 .low-conf svg{flex-shrink:0;margin-top:1px}
 .low-conf strong{font-weight:700}
 
@@ -307,6 +331,11 @@ textarea,input{font-family:var(--font)}
 .cmt-input:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 2px var(--amber-l)}
 .cmt-send{padding:7px 14px;background:var(--amber);border:none;border-radius:var(--r);font-size:12px;font-weight:600;color:#fff;cursor:pointer}
 .cmt-send:hover{filter:brightness(.95)}
+.fb-reason{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px;padding-left:2px;max-width:560px;animation:msgIn .18s}
+.fb-reason-q{font-size:12px;font-weight:600;color:var(--t3);margin-right:2px}
+.fb-chip{font-size:12px;font-weight:500;color:var(--t2);background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-f);padding:5px 12px;cursor:pointer;transition:all var(--tx)}
+.fb-chip:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-light)}
+.fb-chip.alt{color:var(--t4)}
 
 /* Follow-up chips */
 .fu-chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
@@ -718,6 +747,19 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
     Llama 3.3 70B · RAG
   </div>
   <div class="hdr-space"></div>
+  <div class="lang-wrap" id="langWrap">
+    <button class="hdr-btn" id="langBtn" title="Language" aria-label="Interface language" onclick="toggleLangMenu(event)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      <span class="lang-code" id="langCode">EN</span>
+    </button>
+    <div class="lang-menu" id="langMenu" role="menu" aria-label="Interface language">
+      <button role="menuitem" data-lang="en" onclick="setUILang('en')">English</button>
+      <button role="menuitem" data-lang="de" onclick="setUILang('de')">Deutsch</button>
+      <button role="menuitem" data-lang="es" onclick="setUILang('es')">Español</button>
+      <button role="menuitem" data-lang="fr" onclick="setUILang('fr')">Français</button>
+      <button role="menuitem" data-lang="it" onclick="setUILang('it')">Italiano</button>
+    </div>
+  </div>
   <button class="hdr-btn" id="searchToggleBtn" title="Search conversation" aria-label="Search" onclick="toggleSearch()">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
   </button>
@@ -740,7 +782,7 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
   <div class="hdr-sep" aria-hidden="true" style="margin-left:2px"></div>
   <button class="btn-new" id="btnNew" aria-label="New conversation">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-    New
+    <span class="btn-new-label">New</span>
   </button>
 </header>
 
@@ -928,6 +970,103 @@ const SK_DARK  = 'roche_dark';
 const SK_PIN   = 'roche_pinned';
 const SK_DRAFT = 'roche_draft';
 const SK_ANNOUNCE_X = 'roche_announce_dismissed';
+const SK_ULANG = 'roche_ui_lang';
+
+/* ─── INTERFACE LANGUAGE (i18n) ──────────────────────────────────
+ * Translates the visible chrome (welcome, composer, action buttons,
+ * feedback chips). Suggestion-card questions are translated too, so a
+ * German UI sends German questions → the assistant answers in German. */
+let UI_LANG = localStorage.getItem(SK_ULANG) || 'en';
+const I18N = {
+  en: { ph:"Ask about onboarding, equipment, samples, procedures — or report an issue… (⌘K for commands)", nw:"New",
+        gm:"Good morning", ga:"Good afternoon", ge:"Good evening",
+        sub:"Your lab operations assistant. Ask about equipment cleaning, instrument booking, onboarding and access, sample stock, incident reporting, and decontamination — grounded in Roche documentation.",
+        popular:"Popular · asked", recent:"Recently asked",
+        copy:"Copy", save:"Save", pin:"Pin", pinned:"Pinned", listen:"Listen", retry:"Retry", simplify:"Simplify", checklist:"Checklist",
+        fbq:"What was off?", r:["Outdated","Wrong app / tool","Incomplete","Confusing","Not relevant","Other…"],
+        c:[["Clean lab equipment","Cleaning and maintenance","How do I clean the centrifuge rotor after each session?"],
+           ["Book an instrument","Reserve lab equipment","How do I book an instrument and check its availability?"],
+           ["Request app access","Onboarding and access","How do I request access to an internal application?"],
+           ["Report an incident","Log an issue for IT","How do I report an IT incident?"],
+           ["Check sample stock","Inventory and locations","How do I check the current sample stock?"],
+           ["Decontamination","Spill response","What is the decontamination procedure after a sample spill?"]] },
+  de: { ph:"Fragen Sie zu Einarbeitung, Geräten, Proben, Abläufen — oder melden Sie ein Problem… (⌘K für Befehle)", nw:"Neu",
+        gm:"Guten Morgen", ga:"Guten Tag", ge:"Guten Abend",
+        sub:"Ihr Assistent für den Laborbetrieb. Fragen Sie zu Gerätereinigung, Gerätebuchung, Einarbeitung und Zugang, Probenbestand, Störungsmeldungen und Dekontamination — gestützt auf Roche-Dokumentation.",
+        popular:"Beliebt · gefragt", recent:"Kürzlich gefragt",
+        copy:"Kopieren", save:"Speichern", pin:"Anheften", pinned:"Angeheftet", listen:"Vorlesen", retry:"Neu", simplify:"Vereinfachen", checklist:"Checkliste",
+        fbq:"Was war falsch?", r:["Veraltet","Falsche App / Tool","Unvollständig","Verwirrend","Nicht relevant","Andere…"],
+        c:[["Laborgeräte reinigen","Reinigung und Wartung","Wie reinige ich den Zentrifugenrotor nach jeder Nutzung?"],
+           ["Gerät buchen","Laborgeräte reservieren","Wie buche ich ein Gerät und prüfe die Verfügbarkeit?"],
+           ["App-Zugang anfordern","Einarbeitung und Zugang","Wie beantrage ich Zugang zu einer internen Anwendung?"],
+           ["Störung melden","Problem an IT melden","Wie melde ich eine IT-Störung?"],
+           ["Probenbestand prüfen","Bestand und Lagerorte","Wie prüfe ich den aktuellen Probenbestand?"],
+           ["Dekontamination","Reaktion auf Verschütten","Wie lautet das Dekontaminationsverfahren nach einem Verschütten?"]] },
+  es: { ph:"Pregunta sobre incorporación, equipos, muestras, procedimientos — o reporta una incidencia… (⌘K para comandos)", nw:"Nuevo",
+        gm:"Buenos días", ga:"Buenas tardes", ge:"Buenas noches",
+        sub:"Tu asistente de operaciones de laboratorio. Pregunta sobre limpieza de equipos, reserva de instrumentos, incorporación y accesos, stock de muestras, reporte de incidencias y descontaminación — basado en la documentación de Roche.",
+        popular:"Popular · preguntado", recent:"Preguntado hace poco",
+        copy:"Copiar", save:"Guardar", pin:"Fijar", pinned:"Fijado", listen:"Escuchar", retry:"Reintentar", simplify:"Simplificar", checklist:"Lista",
+        fbq:"¿Qué falló?", r:["Desactualizado","App/herramienta errónea","Incompleto","Confuso","No relevante","Otro…"],
+        c:[["Limpiar equipos","Limpieza y mantenimiento","¿Cómo limpio el rotor de la centrífuga tras cada uso?"],
+           ["Reservar un instrumento","Reservar equipos de laboratorio","¿Cómo reservo un instrumento y compruebo su disponibilidad?"],
+           ["Solicitar acceso","Incorporación y accesos","¿Cómo solicito acceso a una aplicación interna?"],
+           ["Reportar incidencia","Registrar un problema para TI","¿Cómo reporto una incidencia de TI?"],
+           ["Stock de muestras","Inventario y ubicaciones","¿Cómo compruebo el stock actual de muestras?"],
+           ["Descontaminación","Respuesta a derrames","¿Cuál es el procedimiento de descontaminación tras un derrame?"]] },
+  fr: { ph:"Posez une question sur l'intégration, les équipements, les échantillons, les procédures — ou signalez un incident… (⌘K pour les commandes)", nw:"Nouveau",
+        gm:"Bonjour", ga:"Bon après-midi", ge:"Bonsoir",
+        sub:"Votre assistant des opérations de laboratoire. Posez des questions sur le nettoyage des équipements, la réservation d'instruments, l'intégration et les accès, le stock d'échantillons, le signalement d'incidents et la décontamination — fondé sur la documentation Roche.",
+        popular:"Populaire · demandé", recent:"Demandé récemment",
+        copy:"Copier", save:"Enregistrer", pin:"Épingler", pinned:"Épinglé", listen:"Écouter", retry:"Relancer", simplify:"Simplifier", checklist:"Liste",
+        fbq:"Qu'est-ce qui n'allait pas ?", r:["Obsolète","Mauvaise app / outil","Incomplet","Confus","Non pertinent","Autre…"],
+        c:[["Nettoyer les équipements","Nettoyage et entretien","Comment nettoyer le rotor de la centrifugeuse après chaque utilisation ?"],
+           ["Réserver un instrument","Réserver des équipements","Comment réserver un instrument et vérifier sa disponibilité ?"],
+           ["Demander un accès","Intégration et accès","Comment demander l'accès à une application interne ?"],
+           ["Signaler un incident","Signaler un problème à l'informatique","Comment signaler un incident informatique ?"],
+           ["Vérifier le stock","Inventaire et emplacements","Comment vérifier le stock actuel d'échantillons ?"],
+           ["Décontamination","Réponse aux déversements","Quelle est la procédure de décontamination après un déversement ?"]] },
+  it: { ph:"Chiedi su onboarding, strumenti, campioni, procedure — o segnala un problema… (⌘K per i comandi)", nw:"Nuovo",
+        gm:"Buongiorno", ga:"Buon pomeriggio", ge:"Buonasera",
+        sub:"Il tuo assistente per le operazioni di laboratorio. Chiedi su pulizia degli strumenti, prenotazione, onboarding e accessi, scorte di campioni, segnalazione incidenti e decontaminazione — basato sulla documentazione Roche.",
+        popular:"Popolare · richiesto", recent:"Richiesto di recente",
+        copy:"Copia", save:"Salva", pin:"Fissa", pinned:"Fissato", listen:"Ascolta", retry:"Riprova", simplify:"Semplifica", checklist:"Lista",
+        fbq:"Cosa non andava?", r:["Obsoleto","App/strumento sbagliato","Incompleto","Confuso","Non pertinente","Altro…"],
+        c:[["Pulire gli strumenti","Pulizia e manutenzione","Come pulisco il rotore della centrifuga dopo ogni utilizzo?"],
+           ["Prenotare uno strumento","Prenotare attrezzature","Come prenoto uno strumento e ne verifico la disponibilità?"],
+           ["Richiedere accesso","Onboarding e accessi","Come richiedo l'accesso a un'applicazione interna?"],
+           ["Segnalare un incidente","Registrare un problema per l'IT","Come segnalo un incidente IT?"],
+           ["Scorte di campioni","Inventario e posizioni","Come controllo le scorte attuali di campioni?"],
+           ["Decontaminazione","Risposta agli sversamenti","Qual è la procedura di decontaminazione dopo uno sversamento?"]] },
+};
+const t  = k => (I18N[UI_LANG] && I18N[UI_LANG][k] != null) ? I18N[UI_LANG][k] : I18N.en[k];
+const tCards = () => (I18N[UI_LANG] && I18N[UI_LANG].c) || I18N.en.c;
+const tReasons = () => (I18N[UI_LANG] && I18N[UI_LANG].r) || I18N.en.r;
+
+function toggleLangMenu(e) {
+  e?.stopPropagation();
+  const menu = document.getElementById('langMenu');
+  const open = menu.classList.toggle('open');
+  if (open) document.addEventListener('click', closeLangMenu, { once: true });
+}
+function closeLangMenu() { document.getElementById('langMenu')?.classList.remove('open'); }
+
+function applyUILang() {
+  document.documentElement.lang = UI_LANG;
+  const code = document.getElementById('langCode'); if (code) code.textContent = UI_LANG.toUpperCase();
+  document.querySelectorAll('#langMenu [data-lang]').forEach(b =>
+    b.classList.toggle('active', b.dataset.lang === UI_LANG));
+  if ($input && !pendingFile) $input.placeholder = t('ph');
+  const nw = document.getElementById('btnNew');
+  if (nw) { const lbl = nw.querySelector('.btn-new-label'); if (lbl) lbl.textContent = t('nw'); }
+}
+function setUILang(code) {
+  UI_LANG = code; localStorage.setItem(SK_ULANG, code);
+  closeLangMenu();
+  applyUILang();
+  // Re-render the landing screen so cards/greeting switch immediately.
+  if (document.getElementById('welcomeScreen')) { document.getElementById('welcomeScreen').remove(); renderWelcome(); }
+}
 
 let sessionId  = null;
 let messages   = [];
@@ -961,6 +1100,7 @@ let currentSessions = [];
 /* ─── BOOT ───────────────────────────────────────────────────── */
 async function init() {
   if (localStorage.getItem(SK_DARK) === '1') applyDark(true);
+  applyUILang();   // reflect the saved interface language (placeholder, New, code)
   window.addEventListener('scroll', onScroll, { passive: true });
 
   if (await checkAuth()) {
@@ -1245,32 +1385,108 @@ function closeDrawer() {
 
 /* ─── WELCOME ────────────────────────────────────────────────── */
 function renderWelcome() {
-  const items = [
-    { icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 4.8 7 3.5c-.29 1.3-1.14 2.63-2.29 3.56S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05Z"/><path d="M12.56 6.6A11 11 0 0 0 14 3c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a7 7 0 0 1-11.9 5"/></svg>', title:'Clean lab equipment',   desc:'Cleaning and maintenance procedures',          q:'How do I clean the centrifuge rotor after each session?' },
-    { icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>', title:'Book an instrument',    desc:'Reserve lab equipment and devices',            q:'How do I book an instrument and check its availability?' },
-    { icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 17.4A2 2 0 0 0 2 18.8V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.2a2 2 0 0 0 1.4-.6l.8-.8a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>', title:'Request app access',    desc:'Onboarding and access requests',               q:'How do I request access to an internal application?' },
-    { icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>', title:'Report an incident',    desc:'Log an issue for the IT team',                 q:'How do I report an IT incident?' },
-    { icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>', title:'Check sample stock',    desc:'Inventory levels and locations',               q:'How do I check the current sample stock?' },
-    { icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z"/><path d="m9 12 2 2 4-4"/></svg>', title:'Decontamination',       desc:'Spill response and safe handling',             q:'What is the decontamination procedure after a sample spill?' },
-  ];
+  const ic = [Q_ICONS.clean, Q_ICONS.book, Q_ICONS.access, Q_ICONS.incident, Q_ICONS.sample, Q_ICONS.decon];
+  const items = tCards().map((c, i) => ({ icon: ic[i], title: c[0], desc: c[1], q: c[2] }));
   const hour = new Date().getHours();
-  const greet = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  const greet = hour < 12 ? t('gm') : hour < 18 ? t('ga') : t('ge');
   const first = (currentUser?.display_name || currentUser?.email || '').split('@')[0].trim().split(/\s+/)[0];
   const wrap = document.createElement('div');
   wrap.id = 'welcomeScreen';
   wrap.innerHTML = `<div class="welcome">
     <div class="welcome-emblem" aria-hidden="true">${ROCHE_WORDMARK}</div>
     <h1>${greet}${first ? `, <em>${esc(first)}</em>` : ''}</h1>
-    <p class="welcome-sub">Your lab operations assistant. Ask about equipment cleaning, instrument booking, onboarding and access, sample stock, incident reporting, and decontamination — grounded in Roche documentation.</p>
-    <div class="sug-grid" role="list">
-      ${items.map(s=>`<button class="sug-card" role="listitem" onclick="sendMessage(${esc(JSON.stringify(s.q))})" aria-label="${s.title}">
+    <p class="welcome-sub">${esc(t('sub'))}</p>
+    <div class="sug-grid" id="sugGrid" role="list">
+      ${items.map(s=>`<button class="sug-card" role="listitem" onclick="sendMessage(${esc(JSON.stringify(s.q))})" aria-label="${esc(s.title)}">
         <span class="sc-icon" aria-hidden="true">${s.icon}</span>
-        <span class="sc-title">${s.title}</span>
-        <span class="sc-desc">${s.desc}</span>
+        <span class="sc-title">${esc(s.title)}</span>
+        <span class="sc-desc">${esc(s.desc)}</span>
       </button>`).join('')}
     </div>
   </div>`;
   $msgs.appendChild(wrap);
+  loadTopQuestions();   // swap in real "most-asked" questions when we have enough
+}
+
+/* Replace the curated suggestion cards with what scientists actually ask most,
+ * pulled live from usage. Falls back silently to the curated cards when there
+ * isn't enough data yet (fresh deployment, sparse history). */
+// Topic icons for the dynamic "most-asked" cards, chosen per question by
+// keyword so each card reflects what it's about (cleaning, booking, access…)
+// instead of a single generic mark.
+const Q_ICONS = {
+  clean:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 4.8 7 3.5c-.29 1.3-1.14 2.63-2.29 3.56S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05Z"/><path d="M12.56 6.6A11 11 0 0 0 14 3c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a7 7 0 0 1-11.9 5"/></svg>',
+  book:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg>',
+  access:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 17.4A2 2 0 0 0 2 18.8V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.2a2 2 0 0 0 1.4-.6l.8-.8a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>',
+  incident: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
+  sample:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>',
+  decon:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z"/><path d="m9 12 2 2 4-4"/></svg>',
+  calib:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>',
+  doc:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
+  default:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+};
+const Q_ICON_POOL = ['clean','book','access','incident','sample','decon','calib','doc','default'];
+function pickQIconKey(q) {
+  const t = (q || '').toLowerCase();
+  if (/clean|centrifuge|wipe|disinfect|rotor|sterili/.test(t)) return 'clean';
+  if (/book|reserv|schedul|instrument|availab|slot/.test(t)) return 'book';
+  if (/access|request|log\s?in|password|vpn|account|onboard|permission/.test(t)) return 'access';
+  if (/incident|report|servicenow|ticket|broken|not work|fault|error/.test(t)) return 'incident';
+  if (/sample|stock|inventory|reagent|specimen|aliquot/.test(t)) return 'sample';
+  if (/decontam|spill|biohazard|\bppe\b|hazard|contamin|waste|dispos/.test(t)) return 'decon';
+  if (/calibrat|ph meter|pipette|measure|accuracy/.test(t)) return 'calib';
+  if (/document|upload|manual|guide|sop|procedure|handbook/.test(t)) return 'doc';
+  return 'default';
+}
+
+async function loadTopQuestions() {
+  // The real "most-asked" questions are stored in their original (English)
+  // wording, so only surface them when the interface is English; other
+  // languages keep the fully-translated curated cards.
+  if (UI_LANG !== 'en') return;
+  try {
+    const r = await fetch('/api/analytics/top-questions?limit=6');
+    if (!r.ok) return;
+    const qs = ((await r.json()).questions || []).filter(x => x && x.question);
+    if (qs.length < 3) return;                       // keep curated cards when sparse
+    const grid = document.getElementById('sugGrid');
+    if (!grid) return;
+    const cut = (t, n) => t.length > n ? t.slice(0, n - 1).trimEnd() + '…' : t;
+    grid.setAttribute('aria-label', 'Most asked questions');
+    const used = new Set();   // ensure every card gets a distinct icon
+    grid.innerHTML = qs.map(item => {
+      let key = pickQIconKey(item.question);
+      if (used.has(key)) key = Q_ICON_POOL.find(k => !used.has(k)) || key;
+      used.add(key);
+      const desc = item.count > 1 ? `${t('popular')} ${item.count}×` : t('recent');
+      return `<button class="sug-card" role="listitem" onclick="sendMessage(${esc(JSON.stringify(item.question))})" aria-label="${esc(item.question)}">
+        <span class="sc-icon" aria-hidden="true">${Q_ICONS[key]}</span>
+        <span class="sc-title">${esc(cut(item.question, 72))}</span>
+        <span class="sc-desc">${desc}</span>
+      </button>`;
+    }).join('');
+  } catch { /* keep curated cards on any error */ }
+}
+
+/* Retrieval transparency: show what the assistant consulted, before the prose
+ * streams in, so the answer visibly rests on documentation. */
+function showSources(m, data) {
+  const card = document.getElementById('card' + m.ts);
+  if (!card) return;
+  const n = data.count || 0;
+  if (!n) return;
+  let note = document.getElementById('retr' + m.ts);
+  if (!note) {
+    note = document.createElement('div');
+    note.id = 'retr' + m.ts;
+    note.className = 'retr-note';
+    const body = document.getElementById('rb' + m.ts);
+    card.insertBefore(note, body);
+  }
+  const names = (data.sources || []).slice(0, 3).map(esc).join(', ');
+  note.innerHTML =
+    `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>` +
+    `<span>Consulted <b>${n}</b> source${n === 1 ? '' : 's'}${names ? ` · ${names}${data.count > 3 ? '…' : ''}` : ''}</span>`;
 }
 
 /* ─── RENDER MESSAGES ────────────────────────────────────────── */
@@ -1462,6 +1678,8 @@ async function sendMessage(text) {
                     language:ev.data.language, citations:[], followups:[], lowConfidence:false, conflict:false, live:true };
           messages.push(aiMsg);
           handles = renderAi(aiMsg, true);
+        } else if (ev.event === 'sources') {
+          if (aiMsg) showSources(aiMsg, ev.data);
         } else if (ev.event === 'token') {
           handles?.pushToken(ev.data.text);
         } else if (ev.event === 'done') {
@@ -1588,20 +1806,32 @@ function buildActions(el, m, row) {
   el.innerHTML = `
     <button class="act-btn" onclick="copyResp(this)" aria-label="Copy">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-      Copy
+      ${t('copy')}
     </button>
     <button class="act-btn" onclick="saveResp(this)" aria-label="Save">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-      Save
+      ${t('save')}
     </button>
     <button class="act-btn${isPinned?' pinned-active':''}" id="pin${m.ts}" onclick="togglePin(${m.ts})" aria-label="${isPinned?'Unpin':'Pin'} response">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-      ${isPinned ? 'Pinned' : 'Pin'}
+      ${isPinned ? t('pinned') : t('pin')}
     </button>
     <button class="act-btn" id="tts${m.ts}" onclick="toggleSpeak(${m.ts})" aria-label="Read answer aloud">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
-      <span class="tts-label">Listen</span>
+      <span class="tts-label">${t('listen')}</span>
     </button>
+    <button class="act-btn" onclick="regenAnswer(${m.ts})" aria-label="Regenerate answer">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      ${t('retry')}
+    </button>
+    <button class="act-btn" onclick="simplifyAnswer(${m.ts})" aria-label="Explain more simply">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10z"/><path d="M19 16l.7 1.9L21.5 18.5 19.7 19.2 19 21l-.7-1.8L16.5 18.5 18.3 17.9z"/></svg>
+      ${t('simplify')}
+    </button>
+    ${extractSteps(m.content).length >= 3 ? `<button class="act-btn" onclick="toggleChecklist(${m.ts})" aria-label="Follow as a checklist">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      ${t('checklist')}
+    </button>` : ''}
     <div style="width:1px;height:16px;background:var(--border);margin:0 2px" aria-hidden="true"></div>
     <button class="fb-btn" id="fbu${m.ts}" onclick="feedback(${m.ts},'up',this)" aria-label="Helpful">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
@@ -1610,6 +1840,69 @@ function buildActions(el, m, row) {
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10z"/><path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>
     </button>
     <span class="act-time">${relTime(m.ts)}</span>`;
+}
+
+/* Re-ask the question that produced this answer (a fresh generation). */
+function regenAnswer(ts) {
+  if (busy) { toast('Please wait for the current answer to finish', 'amber'); return; }
+  const idx = messages.findIndex(x => x.ts === ts);
+  if (idx < 0) return;
+  let q = null;
+  for (let i = idx - 1; i >= 0; i--) { if (messages[i].role === 'user') { q = messages[i].content; break; } }
+  if (!q) { toast('Nothing to regenerate', 'amber'); return; }
+  sendMessage(q);
+}
+
+/* Ask the model to restate its last answer more simply (uses chat history). */
+function simplifyAnswer(ts) {
+  if (busy) { toast('Please wait for the current answer to finish', 'amber'); return; }
+  sendMessage('Please explain your previous answer in simpler, shorter terms.');
+}
+
+/* Pull numbered steps ("1. …", "2) …") out of an answer for guided mode. */
+function extractSteps(text) {
+  const steps = [];
+  for (const ln of (text || '').split('\n')) {
+    const m = ln.match(/^\s*\d+[.)]\s+(.+)/);
+    if (m) steps.push(m[1].trim().replace(/\*\*/g, ''));
+  }
+  return steps;
+}
+
+/* Turn a procedure answer into an interactive, tickable checklist. */
+function toggleChecklist(ts) {
+  const existing = document.getElementById('chk' + ts);
+  if (existing) { existing.remove(); return; }
+  const m = messages.find(x => x.ts === ts);
+  if (!m) return;
+  const steps = extractSteps(m.content);
+  if (steps.length < 2) return;
+  const card = document.getElementById('card' + ts);
+  if (!card) return;
+  const box = document.createElement('div');
+  box.id = 'chk' + ts;
+  box.className = 'chk';
+  box.innerHTML =
+    `<div class="chk-head"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` +
+    `<span>Follow the steps</span><span class="chk-prog" id="chkp${ts}">0 / ${steps.length}</span></div>` +
+    steps.map((s, i) => `<label class="chk-item"><input type="checkbox" onchange="chkTick(${ts}, ${steps.length})"><span class="chk-n">${i + 1}</span><span class="chk-tx">${esc(s)}</span></label>`).join('');
+  card.insertAdjacentElement('afterend', box);
+}
+
+function chkTick(ts, total) {
+  const box = document.getElementById('chk' + ts);
+  if (!box) return;
+  let done = 0;
+  box.querySelectorAll('.chk-item').forEach(it => {
+    const on = it.querySelector('input').checked;
+    it.classList.toggle('done', on);
+    if (on) done++;
+  });
+  const prog = document.getElementById('chkp' + ts);
+  if (prog) {
+    prog.textContent = `${done} / ${total}`;
+    prog.classList.toggle('all', done === total);
+  }
 }
 
 function feedback(ts, dir, btn) {
@@ -1632,7 +1925,7 @@ function feedback(ts, dir, btn) {
     toast('👍 Feedback recorded — thank you!', 'green');
   } else {
     toast('👎 Feedback noted — we\'ll improve', 'amber');
-    showCommentBox(ts, m);   // optional free-text note on a down-vote
+    showReasonBox(ts, m);   // one-tap reason chips on a down-vote
   }
 }
 
@@ -1646,20 +1939,43 @@ async function submitRating(m, dir, comment) {
   } catch { /* feedback is best-effort; never block the UI */ }
 }
 
-function showCommentBox(ts, m) {
+// One-tap structured reasons for a down-vote — a controlled vocabulary so the
+// IT/analytics side gets consistent, groupable signal instead of sparse free
+// text. "Other…" still opens a free-text field for anything that doesn't fit.
+function showReasonBox(ts, m) {
   if (document.getElementById('cmt' + ts)) return;
   const acts = document.getElementById('acts' + ts);
   if (!acts) return;
+  const reasons = tReasons();   // [outdated, wrong, incomplete, confusing, not-relevant, other…]
   const box = document.createElement('div');
   box.id = 'cmt' + ts;
+  box.className = 'fb-reason';
+  box.innerHTML =
+    `<span class="fb-reason-q">${esc(t('fbq'))}</span>` +
+    reasons.slice(0, 5).map(r =>
+      `<button class="fb-chip" type="button" onclick="pickReason(${ts}, ${esc(JSON.stringify(r))})">${esc(r)}</button>`
+    ).join('') +
+    `<button class="fb-chip alt" type="button" onclick="reasonOther(${ts})">${esc(reasons[5] || 'Other…')}</button>`;
+  acts.insertAdjacentElement('afterend', box);
+}
+
+function pickReason(ts, reason) {
+  const m = messages.find(x => x.ts === ts);
+  if (m) submitRating(m, 'down', reason);   // reason stored as the feedback comment
+  document.getElementById('cmt' + ts)?.remove();
+  toast('Thanks — sent to IT', 'amber');
+}
+
+function reasonOther(ts) {
+  const box = document.getElementById('cmt' + ts);
+  if (!box) return;
   box.className = 'cmt-box';
   box.innerHTML = `
     <input class="cmt-input" id="cmtin${ts}" type="text" maxlength="500"
-           placeholder="Optional: what went wrong? (helps IT improve)"
+           placeholder="What went wrong? (helps IT improve)"
            aria-label="Feedback comment"
            onkeydown="if(event.key==='Enter')sendComment(${ts})">
     <button class="cmt-send" type="button" onclick="sendComment(${ts})">Send</button>`;
-  acts.insertAdjacentElement('afterend', box);
   document.getElementById('cmtin' + ts)?.focus();
 }
 
@@ -2320,7 +2636,7 @@ function handleUpload(e) {
 function removeUpload() {
   pendingFile = null;
   document.getElementById('uploadBar').style.display = 'none';
-  $input.placeholder = 'Ask about onboarding, equipment, samples, procedures — or report an issue… (⌘K for commands)';
+  $input.placeholder = t('ph');
 }
 
 /* Upload the attached file into the Drive corpus + live index so the assistant
@@ -2384,8 +2700,7 @@ async function toggleVoice() {
 
 async function transcribeBlob(blob) {
   const btn = document.getElementById('voiceBtn');
-  const restorePlaceholder = () =>
-    ($input.placeholder = 'Ask about onboarding, equipment, samples, procedures — or report an issue… (⌘K for commands)');
+  const restorePlaceholder = () => ($input.placeholder = t('ph'));
   btn.disabled = true;
   $input.placeholder = 'Transcribing…';
   try {

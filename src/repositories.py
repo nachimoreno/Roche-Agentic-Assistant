@@ -1050,6 +1050,57 @@ class SessionRepository:
         # Return oldest-first so callers can append directly to chat history.
         return list(reversed(turns))
 
+    def top_questions(
+        self,
+        *,
+        limit: int = 6,
+        since: Optional[datetime] = None,
+        tenant_id: Optional[UUID] = None,
+        max_scan: int = 2000,
+    ) -> list[dict]:
+        """Most frequently asked user questions, normalized and grouped.
+
+        Powers the welcome screen's "what scientists ask most" cards. Groups by
+        a normalized form (lowercased, whitespace-collapsed, surrounding
+        punctuation stripped), counts occurrences, and returns a representative
+        phrasing per group, most-asked first. Greetings and very short messages
+        are skipped. Bucketing is done in Python (portable across SQLite and
+        Postgres) over the most recent `max_scan` user turns.
+        """
+        import re
+
+        stmt = select(Turn.content).where(
+            Turn.role == "user",
+            Turn.deleted_at.is_(None),  # type: ignore[union-attr]
+        )
+        if since is not None:
+            stmt = stmt.where(Turn.created_at >= since)
+        if tenant_id is not None:
+            stmt = stmt.where(Turn.tenant_id == tenant_id)
+        else:
+            stmt = stmt.where(Turn.tenant_id.is_(None))  # type: ignore[union-attr]
+        stmt = stmt.order_by(Turn.created_at.desc()).limit(max_scan)  # type: ignore[union-attr]
+        with DbSession(self._engine) as db:
+            rows = list(db.exec(stmt).all())
+
+        greetings = {
+            "hi", "hello", "hey", "thanks", "thank you", "ok", "okay",
+            "yes", "no", "test", "good morning", "good afternoon",
+        }
+        groups: dict[str, dict] = {}
+        for content in rows:
+            raw = (content or "").strip()
+            norm = re.sub(r"\s+", " ", raw.lower()).strip(" ?!.,¿¡")
+            if len(norm) < 10 or norm in greetings:
+                continue
+            g = groups.get(norm)
+            if g is None:
+                groups[norm] = {"question": raw, "count": 1}
+            else:
+                g["count"] += 1
+        ranked = sorted(groups.values(), key=lambda g: g["count"], reverse=True)
+        return ranked[:limit]
+
     def soft_delete_session(self, id: UUID) -> None:
         with DbSession(self._engine) as db:
             session = db.get(Session, id)
