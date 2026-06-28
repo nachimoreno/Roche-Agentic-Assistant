@@ -175,6 +175,11 @@ class Assistant:
         """The RAG document store, for runtime ingestion (add-document)."""
         return self._agent.document_store
 
+    @property
+    def rag_agent(self) -> RAGAgent:
+        """The RAG agent — exposed so the runtime-settings layer can tune it."""
+        return self._agent
+
     def _history_for(self, session_id: UUID) -> list[AgentTurn]:
         """Recent turns as agent `Turn`s, for both classification and RAG.
 

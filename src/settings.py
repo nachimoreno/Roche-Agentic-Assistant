@@ -63,8 +63,10 @@ class Settings(BaseSettings):
     # [0, 1] and corpus-size stable (see scripts/calibrate_guardrail.py, which
     # produced these defaults against the lab-ops corpus):
     #   * Dense cosine is the discriminator — it separates in/out of corpus with
-    #     a clean gap (measured: in-domain >= 0.51, off-domain <= 0.26), so 0.40
-    #     sits safely in the middle.
+    #     a clean gap (measured: in-domain >= 0.51, off-domain <= 0.26). 0.30 sits
+    #     just above the off-domain ceiling: tuned down from 0.40 because real
+    #     questions were being declined too readily, trading a little off-domain
+    #     headroom for far fewer false refusals.
     #   * Normalised BM25 ([0, 1] "match completeness", see lexical_index.py) is
     #     a poor off-domain discriminator even after normalisation — a short
     #     off-domain query can fully match one common token (measured up to
@@ -78,7 +80,7 @@ class Settings(BaseSettings):
     # Override either via .env (RETRIEVAL_MIN_DENSE / RETRIEVAL_MIN_LEXICAL);
     # worth re-running the calibration script on the real Drive corpus to
     # confirm the separation holds on real content.
-    retrieval_min_dense: float = 0.40
+    retrieval_min_dense: float = 0.30
     retrieval_min_lexical: float = 0.85
     # Low-confidence ("verify this") warning. When an answer IS given but the
     # top dense cosine is below this, the UI flags it with a caution badge so

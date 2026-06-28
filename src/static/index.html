@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Roche Scientific AI</title>
-<meta name="application-name" content="Roche Scientific AI">
+<title>Roche Fritz</title>
+<meta name="application-name" content="Roche Fritz">
 <meta name="theme-color" content="#0B41CD">
 <!-- iPad / iOS add-to-home-screen: launch full-screen as a standalone app -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -647,6 +647,13 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
 .drawer-user{font-size:12.5px;color:var(--t2);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .drawer-logout{font-size:12.5px;color:var(--t3);font-weight:500;white-space:nowrap}
 .drawer-logout:hover{color:#DC2626}
+/* admin app bar — analytics / announcements / settings, above the account row */
+.drawer-apps{display:flex;gap:6px;padding:10px 12px 0;margin-top:auto}
+.drawer-app{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;
+  padding:9px 4px;border-radius:var(--r-lg);color:var(--t3);text-decoration:none;
+  font-size:11px;font-weight:500;letter-spacing:-.1px;transition:all var(--tx)}
+.drawer-app:hover{background:var(--surface-2);color:var(--t1)}
+.drawer-app svg{width:17px;height:17px;flex-shrink:0}
 
 /* Date group labels in the conversation list (ChatGPT-style) */
 .conv-group{padding:14px 10px 4px;font-size:10.5px;font-weight:700;text-transform:uppercase;
@@ -680,7 +687,7 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
         <polygon points="14,3 108,3 119,32 108,61 14,61 3,32" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/>
         <text x="61" y="42" text-anchor="middle" font-size="27" font-weight="700" letter-spacing=".5" fill="currentColor" font-family="'Roche Sans','Hanken Grotesk',Inter,sans-serif">Roche</text>
       </svg>
-      <span class="auth-title">Scientific AI</span>
+      <span class="auth-title">Fritz</span>
     </div>
     <div class="auth-sub" id="authSub">Sign in to your account</div>
     <form id="authForm" novalidate onsubmit="event.preventDefault();submitAuth()">
@@ -719,6 +726,21 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
     New conversation
   </button>
   <div class="drawer-list" id="convList"></div>
+  <!-- Admin app bar — analytics / announcements / settings (admins only) -->
+  <nav class="drawer-apps" id="drawerApps" aria-label="Admin tools" style="display:none">
+    <a class="drawer-app" href="/admin" title="Feedback analytics">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <span>Analytics</span>
+    </a>
+    <a class="drawer-app" href="/announcements" title="Announcements">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+      <span>Announce</span>
+    </a>
+    <a class="drawer-app" href="/settings" title="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span>Settings</span>
+    </a>
+  </nav>
   <div class="drawer-foot">
     <div class="drawer-user-wrap">
       <div class="user-avatar" id="userAvatar" aria-hidden="true"></div>
@@ -733,12 +755,12 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
   <button class="hdr-btn" id="drawerBtn" title="Conversations" aria-label="Conversations" onclick="toggleSidebar()">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
   </button>
-  <a href="/" class="hdr-logo" aria-label="Roche Scientific AI">
+  <a href="/" class="hdr-logo" aria-label="Roche Fritz">
     <svg class="roche-wordmark" viewBox="0 0 122 64" fill="none" aria-hidden="true">
       <polygon points="14,3 108,3 119,32 108,61 14,61 3,32" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/>
       <text x="61" y="42" text-anchor="middle" font-size="27" font-weight="700" letter-spacing=".5" fill="currentColor" font-family="'Roche Sans','Hanken Grotesk',Inter,sans-serif">Roche</text>
     </svg>
-    <span class="hdr-name">Scientific <em>AI</em></span>
+    <span class="hdr-name"><em>Fritz</em></span>
   </a>
   <div class="hdr-sep" aria-hidden="true"></div>
   <span class="hdr-title" id="convTitle"></span>
@@ -769,9 +791,6 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
   <button class="hdr-btn" id="exportBtn" title="Export conversation" aria-label="Export" onclick="exportConversation()">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
   </button>
-  <a class="hdr-btn" id="adminBtn" title="Feedback analytics" aria-label="Feedback analytics" href="/admin" style="display:none">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-  </a>
   <button class="hdr-btn" id="darkToggleBtn" title="Toggle dark mode" aria-label="Toggle theme" onclick="toggleDark()">
     <svg id="iconSun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     <svg id="iconMoon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
@@ -879,7 +898,7 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
         </div>
       </div>
     </div>
-    <p class="composer-disc">Roche Scientific AI · Always verify with primary sources · <span style="color:var(--green)">●</span> GDPR compliant · <kbd style="font-size:10px;border:1px solid var(--border);border-radius:3px;padding:1px 4px;color:var(--t4)">⌘K</kbd> commands</p>
+    <p class="composer-disc">Roche Fritz · Always verify with primary sources · <span style="color:var(--green)">●</span> GDPR compliant · <kbd style="font-size:10px;border:1px solid var(--border);border-radius:3px;padding:1px 4px;color:var(--t4)">⌘K</kbd> commands</p>
   </div>
 </div>
 
@@ -912,7 +931,7 @@ mark.s-hl{background:rgba(217,119,6,.2);color:inherit;border-radius:2px;padding:
   <div class="help-backdrop" onclick="closeHelp()"></div>
   <div class="help-card">
     <div class="help-head">
-      <h2>How to use the Roche Scientific AI</h2>
+      <h2>How to use Roche Fritz</h2>
       <button class="help-close" onclick="closeHelp()" aria-label="Close help">&times;</button>
     </div>
     <div class="help-body">
@@ -1125,8 +1144,8 @@ async function bootApp() {
   const who = currentUser.display_name || currentUser.email;
   document.getElementById('drawerUser').textContent = who;
   document.getElementById('userAvatar').textContent = initials(who);
-  // Admins get the feedback-analytics console link.
-  document.getElementById('adminBtn').style.display =
+  // Admins get the app bar (analytics / announcements / settings).
+  document.getElementById('drawerApps').style.display =
     currentUser.role === 'admin' ? '' : 'none';
 
   loadAnnouncement();   // show the current admin banner, if any
@@ -2197,12 +2216,12 @@ function applyDark(on) {
 /* ─── EXPORT ─────────────────────────────────────────────────── */
 function exportConversation() {
   if (!messages.length) { toast('⚠ No conversation to export yet', 'amber'); return; }
-  let md = `# Roche Scientific AI — Conversation Export\n_Exported: ${new Date().toLocaleString()}_\n\n---\n\n`;
+  let md = `# Roche Fritz — Conversation Export\n_Exported: ${new Date().toLocaleString()}_\n\n---\n\n`;
   messages.forEach(m => {
     if (m.role === 'user') {
       md += `## You\n${m.content}\n\n`;
     } else {
-      md += `## Roche Scientific AI\n${m.content}\n`;
+      md += `## Roche Fritz\n${m.content}\n`;
       if (m.citations?.length) {
         md += `\n**Sources:**\n` + m.citations.map((c,i)=>`${i+1}. ${c.title || c.source}${c.section?` — ${c.section}`:''}`).join('\n') + '\n';
       }
@@ -2224,7 +2243,7 @@ const CMD_ITEMS = [
   { icon:_CI('<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>'), label:'Toggle dark mode',    desc:'Switch light / dark theme',      kbd:['⌘','D'], fn:() => { closeCmdK(); toggleDark(); } },
   { icon:_CI('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>'), label:'Search conversation', desc:'Find text in this session',      kbd:['⌘','F'], fn:() => { closeCmdK(); if(!document.getElementById('searchBar').classList.contains('open')) toggleSearch(); } },
   { icon:_CI('<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1Z"/>'), label:'View pinned responses',desc:'Show pinned messages',          kbd:[],        fn:() => { closeCmdK(); if(pinned.length) { document.getElementById('pinnedStrip').classList.add('open'); updateTopPad(); } } },
-  { icon:_CI('<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>'), label:'Publish announcement', desc:'Open the admin console to post a banner', kbd:[], admin:true, fn:() => { closeCmdK(); location.href = '/admin'; } },
+  { icon:_CI('<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>'), label:'Publish announcement', desc:'Post a banner to all scientists', kbd:[], admin:true, fn:() => { closeCmdK(); location.href = '/announcements'; } },
 ];
 
 // Command-palette items visible to the current user (admin-only items hidden

@@ -136,14 +136,17 @@ def build_assistant(settings: Settings, engine: Optional[Engine] = None) -> Assi
     )
     source = build_source(settings)
 
-    lexical = BM25Index() if settings.retrieval_mode == "hybrid" else None
+    # Always build the BM25 index so the dense<->hybrid switch is live-toggleable
+    # from the /settings surface; `docs.hybrid` below selects the active mode.
+    # Indexing is cheap for this corpus, so the dense-only default pays for it.
     docs = DocumentStore(
         source=source,
         embedder=embedder,
         vector_store=vector_store,
         manifest_path=f"{settings.chroma_path}/manifest.json",
-        lexical_index=lexical,
+        lexical_index=BM25Index(),
     )
+    docs.hybrid = settings.retrieval_mode == "hybrid"
     report = docs.ingest()
     logger.info(
         "startup.ingest",
@@ -159,6 +162,8 @@ def build_assistant(settings: Settings, engine: Optional[Engine] = None) -> Assi
         document_store=docs,
         llm=llm,
         top_k=settings.top_k,
+        max_tokens=settings.llm_max_tokens,
+        temperature=settings.llm_temperature,
         min_dense=settings.retrieval_min_dense,
         min_lexical=settings.retrieval_min_lexical,
         warn_dense=settings.retrieval_warn_dense,

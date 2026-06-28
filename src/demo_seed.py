@@ -293,7 +293,11 @@ def _make_entry(
         comment = text if (negative and rng.random() < 0.6) else None
         entry = FeedbackEntry(
             session_id=sid,
-            turn_id=new_id(),           # synthetic answer id (real Turn in --full)
+            # No real assistant Turn exists for a synthetic rating, and
+            # FeedbackEntry.turn_id carries an FK to turn.id that Postgres
+            # enforces (SQLite doesn't) — a fabricated id fails the insert. Leave
+            # it NULL; `--full` backfills a real Turn id via _persist_full.
+            turn_id=None,
             tenant_id=DEMO_TENANT_ID,
             language=lang,
             emotion=emotion,

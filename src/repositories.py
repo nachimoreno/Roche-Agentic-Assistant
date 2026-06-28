@@ -28,6 +28,7 @@ from db import (
     FeedbackAttribution,
     FeedbackEntry,
     QuestionGap,
+    RuntimeSetting,
     Session,
     Turn,
     TurnCitation,
@@ -163,6 +164,56 @@ class AnnouncementRepository:
             self._deactivate_all(db)
             db.commit()
         logger.info("announcement.cleared")
+
+
+# ---------------------------------------------------------------------------
+# SettingsRepository
+# ---------------------------------------------------------------------------
+
+class SettingsRepository:
+    """Persists runtime-tunable settings as JSON-encoded key/value rows.
+
+    Only stores keys that have been explicitly overridden from the /settings
+    surface; every other value falls back to its settings.py default. Values are
+    JSON so one column carries floats, ints, bools and strings uniformly.
+    """
+
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+
+    def get_all(self) -> dict[str, object]:
+        """All persisted overrides, decoded. Skips any row that fails to parse."""
+        with DbSession(self._engine) as db:
+            rows = db.exec(select(RuntimeSetting)).all()
+        out: dict[str, object] = {}
+        for row in rows:
+            try:
+                out[row.key] = json.loads(row.value)
+            except (ValueError, TypeError):
+                logger.warning("settings.decode_failed", extra={"key": row.key})
+        return out
+
+    def set_many(
+        self, values: dict[str, object], *, updated_by: Optional[str] = None
+    ) -> None:
+        """Upsert each key/value pair (JSON-encoded). No-op for an empty dict."""
+        if not values:
+            return
+        with DbSession(self._engine) as db:
+            for key, value in values.items():
+                payload = json.dumps(value)
+                row = db.get(RuntimeSetting, key)
+                if row is None:
+                    db.add(RuntimeSetting(
+                        key=key, value=payload, updated_by=updated_by
+                    ))
+                else:
+                    row.value = payload
+                    row.updated_at = utcnow()
+                    row.updated_by = updated_by
+                    db.add(row)
+            db.commit()
+        logger.info("settings.updated", extra={"keys": sorted(values)})
 
 
 # ---------------------------------------------------------------------------

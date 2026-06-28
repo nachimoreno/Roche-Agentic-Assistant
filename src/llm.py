@@ -72,6 +72,16 @@ class GroqClient:
         self._client = Groq(api_key=api_key)
         self._model = model
 
+    @property
+    def model(self) -> str:
+        """The active model id. Settable so the /settings surface can swap it
+        on the running client without re-authenticating."""
+        return self._model
+
+    @model.setter
+    def model(self, value: str) -> None:
+        self._model = value
+
     def complete_structured(
         self,
         *,

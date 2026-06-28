@@ -20,7 +20,7 @@ import re
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 # Make sibling modules importable whether invoked as
@@ -55,8 +55,10 @@ from repositories import (
     FeedbackRepository,
     QuestionGapRepository,
     SessionRepository,
+    SettingsRepository,
     UserRepository,
 )
+from runtime_settings import RuntimeSettings
 from settings import Settings
 
 load_dotenv()
@@ -125,21 +127,23 @@ async def lifespan(app: FastAPI):
     app.state.sessions = SessionRepository(engine)
     app.state.feedback = FeedbackRepository(engine)
     app.state.announcements = AnnouncementRepository(engine)
+    app.state.settings_repo = SettingsRepository(engine)
     # Read-only view of the documentation-gap log for the analytics dashboard.
     # No embedder needed here — clustering happens on write (in the assistant's
     # own repo); these endpoints only read the already-clustered rows.
     app.state.question_gaps = QuestionGapRepository(engine)
+    # Persisted /settings overrides take precedence over the .env defaults — read
+    # them here so the demo-seeding knobs (set on next restart, by design) apply.
+    _overrides = app.state.settings_repo.get_all()
+    _seed_enabled = bool(_overrides.get("seed_demo_feedback", _settings.seed_demo_feedback))
+    _seed_count = int(_overrides.get("demo_feedback_count", _settings.demo_feedback_count))
     # Keep the /admin analytics dashboard demoable on any fresh DB: seed a
     # synthetic feedback dataset once if the demo tenant is empty (no-op
     # otherwise). Failures here never block startup (see ensure_demo_feedback).
-    ensure_demo_feedback(
-        engine,
-        enabled=_settings.seed_demo_feedback,
-        count=_settings.demo_feedback_count,
-    )
+    ensure_demo_feedback(engine, enabled=_seed_enabled, count=_seed_count)
     # Same idea for the documentation-gap panel: seed a synthetic, demo-tenant
     # gap dataset once on a fresh DB so /admin's gaps panel isn't empty.
-    ensure_demo_gaps(engine, enabled=_settings.seed_demo_feedback)
+    ensure_demo_gaps(engine, enabled=_seed_enabled)
     _report_drive_status(_settings)
     try:
         app.state.assistant = build_assistant(_settings, engine=engine)
@@ -150,6 +154,18 @@ async def lifespan(app: FastAPI):
         )
         raise
 
+    # Live, admin-tunable settings layer: holds the running components and
+    # replays any persisted overrides onto them so tuning survives restarts.
+    runtime = RuntimeSettings(
+        agent=app.state.assistant.rag_agent,
+        llm=app.state.assistant.rag_agent.llm,
+        docs=app.state.assistant.document_store,
+        repo=app.state.settings_repo,
+        settings=_settings,
+    )
+    runtime.load_persisted()
+    app.state.runtime_settings = runtime
+
     # Print a clean, clickable link when the app is ready. uvicorn logs the
     # bind address (0.0.0.0), which isn't a URL you can open — show localhost.
     shown_host = (
@@ -157,7 +173,7 @@ async def lifespan(app: FastAPI):
     )
     url = f"http://{shown_host}:{_settings.port}/"
     bar = "-" * 56
-    print(f"\n{bar}\n  Roche Scientific AI is ready.\n"
+    print(f"\n{bar}\n  Roche Fritz is ready.\n"
           f"  Open this link in your browser:  {url}\n{bar}\n", flush=True)
     yield
 
@@ -276,6 +292,12 @@ def _user_out(user: User) -> UserOut:
         display_name=user.display_name,
         role=user.role or "user",
     )
+
+
+class SettingsUpdate(BaseModel):
+    """A partial map of {key: value} runtime-setting overrides. Unknown keys are
+    ignored; out-of-range numbers are clamped (see runtime_settings.apply)."""
+    values: dict[str, Any] = {}
 
 
 class AnnouncementOut(BaseModel):
@@ -908,6 +930,41 @@ def admin_page(user: User = Depends(require_admin)):
     return FileResponse(str(_pages / "admin.html"))
 
 
+@app.get("/announcements", include_in_schema=False)
+def announcements_page(user: User = Depends(require_admin)):
+    """The announcement composer surface (admin-gated)."""
+    return FileResponse(str(_pages / "announcements.html"))
+
+
+@app.get("/settings", include_in_schema=False)
+def settings_page(user: User = Depends(require_admin)):
+    """The runtime-settings surface (admin-gated)."""
+    return FileResponse(str(_pages / "settings.html"))
+
+
+@app.get("/api/settings")
+def get_settings(request: Request, user: User = Depends(require_admin)):
+    """Current tunable settings, grouped with metadata for the /settings UI."""
+    runtime: RuntimeSettings = request.app.state.runtime_settings
+    return runtime.schema()
+
+
+@app.put("/api/settings")
+def update_settings(
+    body: SettingsUpdate,
+    request: Request,
+    user: User = Depends(require_admin),
+):
+    """Apply (and persist) runtime-setting overrides. Returns the new schema so
+    the UI re-renders from the authoritative effective values."""
+    runtime: RuntimeSettings = request.app.state.runtime_settings
+    try:
+        runtime.apply(body.values, updated_by=user.email)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return runtime.schema()
+
+
 @app.get("/api/analytics/summary")
 def analytics_summary(
     request: Request,
@@ -974,14 +1031,17 @@ def analytics_gaps(
 def analytics_onboarding(
     request: Request,
     days: Optional[int] = None,
-    newcomer_days: int = 14,
+    newcomer_days: Optional[int] = None,
     limit: int = 20,
     user: User = Depends(require_admin),
 ):
     """Onboarding funnel: where *newcomers* (users in their first `newcomer_days`)
     get stuck, grouped by topic. Reuses the gap log, filtered to early-tenure
-    questions — directly serves Roche's onboarding priority."""
+    questions — directly serves Roche's onboarding priority. When `newcomer_days`
+    is omitted, the tunable default from /settings is used."""
     gaps: QuestionGapRepository = request.app.state.question_gaps
+    if newcomer_days is None:
+        newcomer_days = request.app.state.runtime_settings.get("newcomer_days", 14)
     return gaps.onboarding(
         newcomer_days=max(1, min(newcomer_days, 365)),
         since=_since(days),

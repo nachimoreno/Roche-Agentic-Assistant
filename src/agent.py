@@ -362,6 +362,7 @@ class RAGAgent:
         *,
         top_k: int = 4,
         max_tokens: int = 1024,
+        temperature: float = 0.0,
         min_dense: float = 0.40,
         min_lexical: float = 0.85,
         warn_dense: float = 0.45,
@@ -370,6 +371,9 @@ class RAGAgent:
         self._llm = llm
         self._top_k = top_k
         self._max_tokens = max_tokens
+        # Sampling temperature for answer generation. 0.0 keeps answers
+        # deterministic and tightly grounded; tunable from the /settings surface.
+        self._temperature = temperature
         # Top dense cosine below this (but above min_dense, so still answered)
         # marks the answer low-confidence for a "verify this" UI badge.
         self._warn_dense = warn_dense
@@ -385,6 +389,64 @@ class RAGAgent:
     def document_store(self) -> DocumentStore:
         """The backing store — lets callers ingest new documents at runtime."""
         return self._docs
+
+    @property
+    def llm(self) -> LLMClient:
+        """The language-model client — exposed so runtime settings can swap the
+        model on it without rebuilding the agent."""
+        return self._llm
+
+    # -- Live-tunable knobs (driven by runtime_settings.py) ----------------
+    # Read per-request in `answer`/`answer_stream`, so mutating them takes
+    # effect on the very next question. Setters keep the values plain (no
+    # clamping here — the settings layer validates before assigning).
+    @property
+    def top_k(self) -> int:
+        return self._top_k
+
+    @top_k.setter
+    def top_k(self, value: int) -> None:
+        self._top_k = value
+
+    @property
+    def max_tokens(self) -> int:
+        return self._max_tokens
+
+    @max_tokens.setter
+    def max_tokens(self, value: int) -> None:
+        self._max_tokens = value
+
+    @property
+    def temperature(self) -> float:
+        return self._temperature
+
+    @temperature.setter
+    def temperature(self, value: float) -> None:
+        self._temperature = value
+
+    @property
+    def min_dense(self) -> float:
+        return self._min_dense
+
+    @min_dense.setter
+    def min_dense(self, value: float) -> None:
+        self._min_dense = value
+
+    @property
+    def min_lexical(self) -> float:
+        return self._min_lexical
+
+    @min_lexical.setter
+    def min_lexical(self, value: float) -> None:
+        self._min_lexical = value
+
+    @property
+    def warn_dense(self) -> float:
+        return self._warn_dense
+
+    @warn_dense.setter
+    def warn_dense(self, value: float) -> None:
+        self._warn_dense = value
 
     def _off_domain(self, retrieval: RetrievalResult) -> bool:
         """True when retrieval is too weak to answer — clearly off-domain.
@@ -452,7 +514,7 @@ class RAGAgent:
             user=message,
             schema=AnswerResult.model_json_schema(),
             history=[{"role": t.role, "content": t.content} for t in history],
-            temperature=0.0,
+            temperature=self._temperature,
             max_tokens=self._max_tokens,
         )
         result = AnswerResult.model_validate(payload)
@@ -541,7 +603,7 @@ class RAGAgent:
             system=system,
             user=message,
             history=[{"role": t.role, "content": t.content} for t in history],
-            temperature=0.0,
+            temperature=self._temperature,
             max_tokens=self._max_tokens,
         )
 

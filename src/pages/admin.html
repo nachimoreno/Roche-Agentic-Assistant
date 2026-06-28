@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Feedback Analytics — Roche Scientific AI</title>
+<title>Feedback Analytics — Roche Fritz</title>
 <meta name="theme-color" content="#0B41CD">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -146,7 +146,6 @@ textarea{font-family:var(--font)}
 .c-langs{grid-column:span 4}
 .c-emotions{grid-column:span 12}
 .c-hotspots{grid-column:span 7}
-.c-announce{grid-column:span 12}
 
 /* section header bars + thematic grouping via CSS order (no DOM reorder) */
 .sec{grid-column:1 / -1;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:16px 2px 0;padding-bottom:9px;border-bottom:1px solid var(--border)}
@@ -157,7 +156,6 @@ textarea{font-family:var(--font)}
 .sec-2{order:10} .c-trend{order:11} .c-adoption{order:12} .c-quality{order:13} .c-source{order:14}
 .sec-3{order:20} .c-ratings{order:21} .c-sentiment{order:22} .c-langs{order:23} .c-emotions{order:24}
 .sec-4{order:30} .c-hotspots{order:31} .c-topq{order:32} .c-gaps{order:33} .c-onboarding{order:34}
-.sec-5{order:40} .c-announce{order:41}
 .chartbox{position:relative;height:264px}
 .chartbox.sm{height:236px}
 .donut-wrap{position:relative;height:236px;display:flex;align-items:center;justify-content:center}
@@ -238,19 +236,6 @@ textarea{font-family:var(--font)}
 .onb-win button:last-child{border-right:0}
 .onb-win button.on{background:var(--blue-mid);color:var(--blue)}
 
-/* announcement composer */
-.c-announce{background:linear-gradient(180deg,var(--surface),var(--inset))}
-.annx{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--t2);margin-bottom:14px;padding:11px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r)}
-.annx b{color:var(--t1);font-weight:700}
-.ann-dot{width:9px;height:9px;border-radius:50%;background:var(--t4);flex:none}
-.ann-dot.live{background:var(--green);box-shadow:0 0 9px var(--green)}
-.c-announce textarea{width:100%;min-height:72px;resize:vertical;background:var(--surface);border:1px solid var(--border-2);border-radius:var(--r);color:var(--t1);font:14px/1.55 var(--font);padding:12px 14px;transition:border-color var(--tx),box-shadow var(--tx)}
-.c-announce textarea::placeholder{color:var(--t4)}
-.c-announce textarea:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-mid)}
-.ann-actions{display:flex;align-items:center;gap:14px;margin-top:14px}
-.ann-actions .count{font-size:11.5px;color:var(--t4);font-variant-numeric:tabular-nums;font-weight:600}
-.ann-actions .msg{flex:1;font-size:12.5px;font-weight:600}
-.ann-actions .msg.ok{color:var(--green)}.ann-actions .msg.err{color:var(--amber)}
 .btn{background:var(--surface);border:1px solid var(--border-2);border-radius:var(--r);color:var(--t2);font:600 13px var(--font);padding:9px 18px;transition:all var(--tx)}
 .btn:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-light)}
 .btn.primary{background:var(--blue);border-color:var(--blue);color:#fff;box-shadow:0 4px 12px var(--blue-mid)}
@@ -269,7 +254,7 @@ textarea{font-family:var(--font)}
 
 @media(max-width:1080px){
   .kpi{grid-column:span 6}
-  .c-trend,.c-quality,.c-hotspots,.c-emotions,.c-topq,.c-gaps,.c-onboarding,.c-announce{grid-column:span 12}
+  .c-trend,.c-quality,.c-hotspots,.c-emotions,.c-topq,.c-gaps,.c-onboarding{grid-column:span 12}
   .c-ratings,.c-sentiment,.c-langs,.c-adoption,.c-source{grid-column:span 6}
 }
 /* Held/viewed vertically (portrait): one clean column, sections stacked. */
@@ -287,12 +272,12 @@ textarea{font-family:var(--font)}
 </head>
 <body>
 <header class="hdr" role="banner">
-  <a href="/" class="hdr-logo" aria-label="Roche Scientific AI">
+  <a href="/" class="hdr-logo" aria-label="Roche Fritz">
     <svg class="roche-wordmark" viewBox="0 0 122 64" fill="none" aria-hidden="true">
       <polygon points="14,3 108,3 119,32 108,61 14,61 3,32" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/>
       <text x="61" y="42" text-anchor="middle" font-size="27" font-weight="700" letter-spacing=".5" fill="currentColor" font-family="'Roche Sans','Hanken Grotesk',Inter,sans-serif">Roche</text>
     </svg>
-    <span class="hdr-name">Scientific <em>AI</em></span>
+    <span class="hdr-name"><em>Fritz</em></span>
   </a>
   <div class="hdr-sep" aria-hidden="true"></div>
   <span class="hdr-title">Feedback Analytics</span>
@@ -333,7 +318,6 @@ textarea{font-family:var(--font)}
     <div class="sec sec-2"><span class="sec-t">Activity over time</span><span class="sec-d">How usage and feedback evolve day to day</span></div>
     <div class="sec sec-3"><span class="sec-t">Satisfaction &amp; sentiment</span><span class="sec-d">How scientists rate and feel about answers</span></div>
     <div class="sec sec-4"><span class="sec-t">Where answers fall short</span><span class="sec-d">Hotspots, top questions, gaps and onboarding</span></div>
-    <div class="sec sec-5"><span class="sec-t">Operations</span><span class="sec-d">Broadcast a banner to all scientists</span></div>
 
     <!-- KPI ROW -->
     <section class="card kpi" style="--accent:var(--blue)">
@@ -520,22 +504,6 @@ textarea{font-family:var(--font)}
       <div class="hs-legend">
         <span><i style="background:var(--red)"></i>declined — no relevant doc found</span>
         <span><i style="background:var(--amber)"></i>weak — answered but low confidence</span>
-      </div>
-    </section>
-
-    <!-- ANNOUNCEMENT -->
-    <section class="card c-announce" aria-label="Announcement">
-      <div class="ctitle">
-        <span class="tico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg></span>
-        Announcement <small>banner shown to all scientists</small>
-      </div>
-      <div class="annx"><span class="ann-dot" id="annDot"></span><span id="annState">No banner is live.</span></div>
-      <textarea id="annInput" maxlength="280" rows="2" placeholder="e.g. Lab 3 is closed Friday for maintenance — please use Lab 2." aria-label="Announcement message"></textarea>
-      <div class="ann-actions">
-        <span class="count" id="annCount">0 / 280</span>
-        <span class="msg" id="annMsg" role="status" aria-live="polite"></span>
-        <button class="btn danger" id="annClear">Take down</button>
-        <button class="btn primary" id="annPublish">Publish</button>
       </div>
     </section>
   </div>
@@ -995,32 +963,8 @@ async function load(){
   }
 }
 
-/* ── announcement composer ─────────────────────────────────────── */
+/* HTML-escape helper, shared by the gap/top-question/conflict renderers. */
 const escAnn = s => (s||"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-function renderAnn(a){
-  const live = !!(a && a.message);
-  $("annDot").classList.toggle("live", live);
-  $("annState").innerHTML = live ? `Live: <b>${escAnn(a.message)}</b>` : "No banner is live.";
-  $("annClear").disabled = !live;
-  if (live && document.activeElement !== $("annInput") && !$("annInput").value){ $("annInput").value = a.message; annCount(); }
-}
-async function loadAnn(){ try{ renderAnn(await fetchJSON("/api/announcement")); }catch(err){ if (err.denied) lockout(); } }
-function annNote(text, kind){
-  const el = $("annMsg"); el.textContent = text; el.className = "msg "+(kind||"");
-  if (text) setTimeout(()=>{ if (el.textContent===text){ el.textContent=""; el.className="msg"; } }, 4000);
-}
-async function publishAnn(message){
-  $("annPublish").disabled = true;
-  try{
-    const r = await fetch("/api/announcement",{ method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({message}) });
-    if (r.status===401||r.status===404) return lockout();
-    if (!r.ok) throw new Error("http "+r.status);
-    renderAnn(await r.json());
-    annNote(message.trim() ? "Published to all scientists." : "Banner taken down.", "ok");
-  }catch(err){ annNote("Could not update the banner.", "err"); }
-  finally{ $("annPublish").disabled = false; }
-}
-function annCount(){ $("annCount").textContent = $("annInput").value.length+" / 280"; }
 
 /* ── controls ──────────────────────────────────────────────────── */
 document.querySelectorAll(".seg [data-days]").forEach(b => b.addEventListener("click", () => {
@@ -1036,19 +980,11 @@ document.querySelectorAll(".onb-win [data-nd]").forEach(b => b.addEventListener(
   b.classList.add("on"); state.newcomerDays = parseInt(b.dataset.nd, 10); loadOnboarding();
 }));
 $("refresh").addEventListener("click", load);
-$("annInput").addEventListener("input", annCount);
-$("annPublish").addEventListener("click", () => {
-  const msg = $("annInput").value.trim();
-  if (!msg){ annNote("Type a message, or use Take down.", "err"); return; }
-  publishAnn(msg);
-});
-$("annClear").addEventListener("click", () => { publishAnn(""); $("annInput").value=""; annCount(); });
 
 /* ── boot ──────────────────────────────────────────────────────── */
 applyDark(localStorage.getItem("roche_dark") === "1");
 applyChartDefaults();
 load();
-loadAnn();
 </script>
 </body>
 </html>

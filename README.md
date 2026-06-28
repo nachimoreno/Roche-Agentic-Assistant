@@ -66,7 +66,7 @@ python src/api.py            # or: uvicorn src.api:app --reload
 # then open http://127.0.0.1:8000/  (register an account, then chat)
 ```
 
-On Windows, double-click **`Roche Scientific AI.bat`** to start the server (if needed) and open the chat in its own app window.
+On Windows, double-click **`Roche Fritz.bat`** to start the server (if needed) and open the chat in its own app window.
 
 Prefer a terminal? The CLI REPL still works:
 
@@ -167,7 +167,7 @@ tests/                        # ~340 tests (see `pytest`), incl.:
 scripts/
   seed_synthetic_feedback.py  # seed demo feedback/analytics for /admin
   calibrate_guardrail.py      # tune the off-domain guardrail threshold
-Roche Scientific AI.bat       # Windows desktop launcher
+Roche Fritz.bat               # Windows desktop launcher
 ```
 
 ## Production-readiness hedges

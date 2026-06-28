@@ -130,14 +130,28 @@ class DocumentStore:
         self._embedder = embedder
         self._store = vector_store
         self._manifest_path = Path(manifest_path)
-        # When set, retrieval is hybrid (dense + BM25). When None, dense-only.
+        # When set, a BM25 index is available for hybrid retrieval. The `_hybrid`
+        # flag selects the active mode: keeping the index built but toggling the
+        # flag lets the /settings surface switch dense <-> hybrid at runtime
+        # without rebuilding. Dense-only when no index was supplied.
         self._lexical = lexical_index
+        self._hybrid = lexical_index is not None
         # source_id -> citation/resolution metadata (process, department, title,
         # url, modified_at + conflict keys; see `_doc_meta_record`) for
         # citation→process attribution and the contradiction resolver. Populated
         # on every ingest for *all* docs seen (including unchanged ones that skip
         # re-embedding).
         self._doc_meta: dict[str, dict[str, Optional[str]]] = {}
+
+    @property
+    def hybrid(self) -> bool:
+        """Whether hybrid (dense + BM25) retrieval is active. Only True when a
+        lexical index is available. Settable at runtime from /settings."""
+        return self._hybrid and self._lexical is not None
+
+    @hybrid.setter
+    def hybrid(self, on: bool) -> None:
+        self._hybrid = bool(on)
 
     # ------------------------------------------------------------------
     # Ingestion
@@ -304,8 +318,8 @@ class DocumentStore:
         """
         embedding = self._embedder.embed([query])[0]
 
-        # Dense-only path (no lexical index configured).
-        if self._lexical is None:
+        # Dense-only path (no lexical index, or hybrid switched off at runtime).
+        if self._lexical is None or not self._hybrid:
             chunks = self._store.query(embedding=embedding, k=k)
             # Best dense score is the retrieval-confidence signal; capture it
             # before version-dedup, which may drop the top chunk as a stale copy.

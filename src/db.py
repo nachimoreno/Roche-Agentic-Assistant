@@ -161,6 +161,20 @@ class Announcement(SQLModel, table=True):
     deleted_at: Optional[datetime] = Field(default=None, index=True)
 
 
+class RuntimeSetting(SQLModel, table=True):
+    """A runtime-tunable configuration override, edited from the /settings surface.
+
+    Persists admin tuning (confidence thresholds, retrieval, LLM and demo knobs)
+    across restarts. One row per key; `value` is JSON-encoded so a single column
+    carries floats, ints, bools and strings uniformly. Defaults live in
+    settings.py — a key only appears here once it has been overridden.
+    """
+    key: str = Field(primary_key=True)
+    value: str                                       # JSON-encoded scalar
+    updated_at: datetime = Field(default_factory=utcnow)
+    updated_by: Optional[str] = Field(default=None)  # admin email that set it
+
+
 class QuestionGap(SQLModel, table=True):
     """A question the assistant could not answer well — a documentation gap.
 

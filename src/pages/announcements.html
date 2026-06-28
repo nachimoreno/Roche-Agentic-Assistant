@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Announcements — Roche Fritz</title>
+<meta name="theme-color" content="#0B41CD">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700;800&family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+@font-face{font-family:'Roche Sans';font-weight:400;font-style:normal;font-display:swap;
+  src:url('/static/fonts/RocheSans-Regular.woff2') format('woff2'),url('/static/fonts/RocheSans-Regular.ttf') format('truetype');}
+@font-face{font-family:'Roche Sans';font-weight:500;font-style:normal;font-display:swap;
+  src:url('/static/fonts/RocheSans-Medium.woff2') format('woff2'),url('/static/fonts/RocheSans-Medium.ttf') format('truetype');}
+@font-face{font-family:'Roche Sans';font-weight:600;font-style:normal;font-display:swap;
+  src:url('/static/fonts/RocheSans-SemiBold.woff2') format('woff2'),url('/static/fonts/RocheSans-SemiBold.ttf') format('truetype');}
+@font-face{font-family:'Roche Sans';font-weight:700;font-style:normal;font-display:swap;
+  src:url('/static/fonts/RocheSans-Bold.woff2') format('woff2'),url('/static/fonts/RocheSans-Bold.ttf') format('truetype');}
+
+:root{
+  --blue:#0B41CD; --blue-h:#0834A4; --blue-light:#EDF1FE; --blue-mid:rgba(11,65,205,.10);
+  --bg:#F4F6FB; --surface:#FFFFFF; --surface-2:#EEF2F8; --inset:#F6F8FC;
+  --border:#E6EBF3; --border-2:#D6DEEA;
+  --t1:#0E1726; --t2:#3A465B; --t3:#6A7691; --t4:#9AA5BC;
+  --green:#16A34A; --green-l:#E9FBF0; --red:#E2433B; --red-l:#FDF0EF; --amber:#E08600;
+  --s-sm:0 1px 2px rgba(16,24,40,.05);
+  --s-lg:0 8px 28px rgba(16,24,40,.10),0 2px 8px rgba(16,24,40,.05);
+  --r:12px; --r-lg:16px; --r-xl:20px; --r-f:9999px; --hdr:58px;
+  --font:'Roche Sans','Hanken Grotesk','Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  --tx:.2s cubic-bezier(.4,0,.2,1);
+}
+[data-theme="dark"]{
+  --blue:#6E8DF7; --blue-h:#8FA8FA; --blue-light:rgba(110,141,247,.13); --blue-mid:rgba(110,141,247,.18);
+  --bg:#070B18; --surface:#0F1626; --surface-2:#18223A; --inset:#0C1220;
+  --border:rgba(255,255,255,.07); --border-2:rgba(255,255,255,.13);
+  --t1:#EEF2F9; --t2:#C3CDDD; --t3:#8C9AB4; --t4:#5C6B86;
+  --green:#34D399; --green-l:rgba(52,211,153,.14); --red:#F87171; --red-l:rgba(248,113,113,.14); --amber:#F5A623;
+  --s-sm:0 1px 3px rgba(0,0,0,.35); --s-lg:0 14px 40px rgba(0,0,0,.55);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--font);color:var(--t1);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased;min-height:100vh;background:var(--bg);transition:background .3s,color .3s}
+button{cursor:pointer;font-family:var(--font);border:none;background:none;color:inherit}
+textarea{font-family:var(--font)}
+::-webkit-scrollbar{width:7px;height:7px}
+::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:99px}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+.hdr{position:sticky;top:0;z-index:200;height:var(--hdr);background:color-mix(in srgb, var(--surface) 80%, transparent);backdrop-filter:blur(20px) saturate(1.6);-webkit-backdrop-filter:blur(20px) saturate(1.6);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 22px;gap:11px}
+.hdr-logo{display:flex;align-items:center;gap:10px;text-decoration:none;flex-shrink:0}
+.roche-wordmark{display:block;color:var(--blue);height:30px;width:auto}
+.hdr-name{font-size:14px;font-weight:600;color:var(--t1);letter-spacing:-.3px}
+.hdr-name em{color:var(--blue);font-style:normal}
+.hdr-sep{width:1px;height:22px;background:var(--border);flex-shrink:0}
+.hdr-title{font-size:13.5px;font-weight:600;color:var(--t2);white-space:nowrap}
+.hdr-space{flex:1}
+.hdr-btn{width:34px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:var(--r);color:var(--t3);transition:all var(--tx);position:relative;text-decoration:none}
+.hdr-btn:hover{background:var(--surface-2);color:var(--t1)}
+.btn-back{display:flex;align-items:center;gap:6px;padding:7px 13px;background:var(--surface);border:1px solid var(--border-2);border-radius:var(--r);font-size:13px;font-weight:500;color:var(--t2);text-decoration:none;transition:all var(--tx)}
+.btn-back:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-light)}
+
+.wrap{max-width:720px;margin:0 auto;padding:30px 24px 64px}
+.pagehead{margin-bottom:22px}
+.pagehead h1{font-size:26px;font-weight:800;letter-spacing:-.7px;line-height:1.1}
+.pagehead h1 em{color:var(--blue);font-style:normal}
+.pagehead p{font-size:13.5px;color:var(--t3);margin-top:6px}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);padding:22px 22px 20px;box-shadow:var(--s-sm)}
+.ctitle{display:flex;align-items:center;gap:9px;font-size:12px;font-weight:700;color:var(--t2);letter-spacing:.2px;margin-bottom:16px}
+.ctitle .tico{width:28px;height:28px;flex:none;display:flex;align-items:center;justify-content:center;border-radius:9px;background:var(--blue-light);color:var(--blue)}
+.ctitle .tico svg{width:16px;height:16px}
+.ctitle small{margin-left:auto;color:var(--t4);font-size:11.5px;font-weight:500;letter-spacing:0}
+
+.annx{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--t2);margin-bottom:14px;padding:11px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r)}
+.annx b{color:var(--t1);font-weight:700}
+.ann-dot{width:9px;height:9px;border-radius:50%;background:var(--t4);flex:none}
+.ann-dot.live{background:var(--green);box-shadow:0 0 9px var(--green)}
+.card textarea{width:100%;min-height:96px;resize:vertical;background:var(--surface);border:1px solid var(--border-2);border-radius:var(--r);color:var(--t1);font:15px/1.55 var(--font);padding:13px 15px;transition:border-color var(--tx),box-shadow var(--tx)}
+.card textarea::placeholder{color:var(--t4)}
+.card textarea:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-mid)}
+.ann-actions{display:flex;align-items:center;gap:14px;margin-top:16px}
+.ann-actions .count{font-size:11.5px;color:var(--t4);font-variant-numeric:tabular-nums;font-weight:600}
+.ann-actions .msg{flex:1;font-size:12.5px;font-weight:600}
+.ann-actions .msg.ok{color:var(--green)}.ann-actions .msg.err{color:var(--amber)}
+.btn{background:var(--surface);border:1px solid var(--border-2);border-radius:var(--r);color:var(--t2);font:600 13px var(--font);padding:9px 18px;transition:all var(--tx)}
+.btn:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-light)}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff;box-shadow:0 4px 12px var(--blue-mid)}
+.btn.primary:hover{background:var(--blue-h);border-color:var(--blue-h);color:#fff;transform:translateY(-1px)}
+.btn.danger:hover{border-color:var(--red);color:var(--red);background:var(--red-l)}
+.btn[disabled]{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+.preview{margin-top:22px}
+.preview-label{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--t4);margin-bottom:9px}
+.preview-bar{display:flex;align-items:center;gap:10px;padding:13px 16px;border-radius:var(--r);background:var(--blue-light);border:1px solid var(--blue-mid);color:var(--t1);font-size:13.5px;font-weight:500}
+.preview-bar svg{width:16px;height:16px;color:var(--blue);flex:none}
+.preview-bar.empty{background:var(--surface-2);border-color:var(--border);color:var(--t4);font-weight:600}
+
+.statusline{margin-top:26px;display:flex;justify-content:center;align-items:center;gap:8px;color:var(--t4);font-size:11.5px;text-align:center}
+.statusline svg{width:13px;height:13px;flex:none}
+.lockout{max-width:430px;margin:16vh auto;text-align:center;border:1px solid var(--border);border-radius:var(--r-xl);padding:44px 36px;background:var(--surface);box-shadow:var(--s-lg)}
+.lockout .lk-ico{width:56px;height:56px;margin:0 auto 18px;display:flex;align-items:center;justify-content:center;border-radius:16px;background:var(--blue-light);color:var(--blue)}
+.lockout h1{font-size:21px;font-weight:800;letter-spacing:-.4px;margin-bottom:10px}
+.lockout p{color:var(--t3);font-size:13.5px;margin-bottom:24px}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header class="hdr" role="banner">
+  <a href="/" class="hdr-logo" aria-label="Roche Fritz">
+    <svg class="roche-wordmark" viewBox="0 0 122 64" fill="none" aria-hidden="true">
+      <polygon points="14,3 108,3 119,32 108,61 14,61 3,32" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/>
+      <text x="61" y="42" text-anchor="middle" font-size="27" font-weight="700" letter-spacing=".5" fill="currentColor" font-family="'Roche Sans','Hanken Grotesk',Inter,sans-serif">Roche</text>
+    </svg>
+    <span class="hdr-name"><em>Fritz</em></span>
+  </a>
+  <div class="hdr-sep" aria-hidden="true"></div>
+  <span class="hdr-title">Announcements</span>
+  <div class="hdr-space"></div>
+  <button class="hdr-btn" id="darkToggleBtn" title="Toggle dark mode" aria-label="Toggle theme" onclick="toggleDark()">
+    <svg id="iconSun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+    <svg id="iconMoon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+  </button>
+  <a class="btn-back" href="/" aria-label="Back to assistant">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    Assistant
+  </a>
+</header>
+
+<div class="wrap" id="app">
+  <div class="pagehead">
+    <h1>Announce<em>ments</em></h1>
+    <p>Broadcast a single banner to every scientist. Publishing replaces the live one.</p>
+  </div>
+
+  <section class="card" aria-label="Announcement composer">
+    <div class="ctitle">
+      <span class="tico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg></span>
+      Banner <small>shown to all scientists</small>
+    </div>
+    <div class="annx"><span class="ann-dot" id="annDot"></span><span id="annState">No banner is live.</span></div>
+    <textarea id="annInput" maxlength="280" rows="3" placeholder="e.g. Lab 3 is closed Friday for maintenance — please use Lab 2." aria-label="Announcement message"></textarea>
+    <div class="ann-actions">
+      <span class="count" id="annCount">0 / 280</span>
+      <span class="msg" id="annMsg" role="status" aria-live="polite"></span>
+      <button class="btn danger" id="annClear">Take down</button>
+      <button class="btn primary" id="annPublish">Publish</button>
+    </div>
+
+    <div class="preview">
+      <div class="preview-label">Preview</div>
+      <div class="preview-bar empty" id="annPreview">Your banner appears here, pinned above every conversation.</div>
+    </div>
+  </section>
+
+  <div class="statusline">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+    <span>Only one banner is active at a time. Taking it down clears it for everyone.</span>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+
+/* ── theme ─────────────────────────────────────────────────────── */
+function applyDark(on){
+  document.documentElement.dataset.theme = on ? "dark" : "light";
+  localStorage.setItem("roche_dark", on ? "1" : "0");
+  $("iconSun").style.display = on ? "block" : "none";
+  $("iconMoon").style.display = on ? "none" : "block";
+}
+function toggleDark(){ applyDark(document.documentElement.dataset.theme !== "dark"); }
+
+/* ── auth lockout (shared with the analytics console) ──────────── */
+function lockout(){
+  document.body.innerHTML = `
+    <div class="lockout">
+      <div class="lk-ico"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+      <h1>Access required</h1>
+      <p>This surface is restricted to administrators.<br>Your session may have expired.</p>
+      <a class="btn primary" href="/" style="text-decoration:none">Return to assistant</a>
+    </div>`;
+}
+async function fetchJSON(url){
+  const r = await fetch(url);
+  if (r.status === 401 || r.status === 404) throw Object.assign(new Error("denied"), {denied:true});
+  if (!r.ok) throw new Error("http "+r.status);
+  return r.json();
+}
+
+/* ── announcement composer ─────────────────────────────────────── */
+const esc = s => (s||"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function renderAnn(a){
+  const live = !!(a && a.message);
+  $("annDot").classList.toggle("live", live);
+  $("annState").innerHTML = live ? `Live: <b>${esc(a.message)}</b>` : "No banner is live.";
+  $("annClear").disabled = !live;
+  if (live && document.activeElement !== $("annInput") && !$("annInput").value){ $("annInput").value = a.message; annCount(); }
+  renderPreview();
+}
+async function loadAnn(){ try{ renderAnn(await fetchJSON("/api/announcement")); }catch(err){ if (err.denied) lockout(); } }
+function annNote(text, kind){
+  const el = $("annMsg"); el.textContent = text; el.className = "msg "+(kind||"");
+  if (text) setTimeout(()=>{ if (el.textContent===text){ el.textContent=""; el.className="msg"; } }, 4000);
+}
+async function publishAnn(message){
+  $("annPublish").disabled = true;
+  try{
+    const r = await fetch("/api/announcement",{ method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({message}) });
+    if (r.status===401||r.status===404) return lockout();
+    if (!r.ok) throw new Error("http "+r.status);
+    renderAnn(await r.json());
+    annNote(message.trim() ? "Published to all scientists." : "Banner taken down.", "ok");
+  }catch(err){ annNote("Could not update the banner.", "err"); }
+  finally{ $("annPublish").disabled = false; }
+}
+function annCount(){ $("annCount").textContent = $("annInput").value.length+" / 280"; renderPreview(); }
+function renderPreview(){
+  const text = $("annInput").value.trim();
+  const bar = $("annPreview");
+  if (!text){ bar.className = "preview-bar empty"; bar.textContent = "Your banner appears here, pinned above every conversation."; return; }
+  bar.className = "preview-bar";
+  bar.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg><span>${esc(text)}</span>`;
+}
+
+/* ── controls ──────────────────────────────────────────────────── */
+$("annInput").addEventListener("input", annCount);
+$("annPublish").addEventListener("click", () => {
+  const msg = $("annInput").value.trim();
+  if (!msg){ annNote("Type a message, or use Take down.", "err"); return; }
+  publishAnn(msg);
+});
+$("annClear").addEventListener("click", () => { publishAnn(""); $("annInput").value=""; annCount(); });
+
+/* ── boot ──────────────────────────────────────────────────────── */
+applyDark(localStorage.getItem("roche_dark") === "1");
+loadAnn();
+</script>
+</body>
+</html>

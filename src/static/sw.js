@@ -1,4 +1,4 @@
-/* Roche Scientific AI — service worker.
+/* Roche Fritz — service worker.
  *
  * Goal: make the app installable and resilient on tablet Wi-Fi, without ever
  * serving stale dynamic data. Strategy:

@@ -1,6 +1,6 @@
 {
-  "name": "Roche Scientific AI",
-  "short_name": "Roche AI",
+  "name": "Roche Fritz",
+  "short_name": "Fritz",
   "description": "Roche lab operations assistant — onboarding, instrument booking, cleaning, sample stock, and incident reporting, grounded in internal documentation.",
   "start_url": "/",
   "scope": "/",

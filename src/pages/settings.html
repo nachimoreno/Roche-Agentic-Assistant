@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Settings — Roche Fritz</title>
+<meta name="theme-color" content="#0B41CD">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700;800&family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+@font-face{font-family:'Roche Sans';font-weight:400;font-style:normal;font-display:swap;
+  src:url('/static/fonts/RocheSans-Regular.woff2') format('woff2'),url('/static/fonts/RocheSans-Regular.ttf') format('truetype');}
+@font-face{font-family:'Roche Sans';font-weight:500;font-style:normal;font-display:swap;
+  src:url('/static/fonts/RocheSans-Medium.woff2') format('woff2'),url('/static/fonts/RocheSans-Medium.ttf') format('truetype');}
+@font-face{font-family:'Roche Sans';font-weight:600;font-style:normal;font-display:swap;
+  src:url('/static/fonts/RocheSans-SemiBold.woff2') format('woff2'),url('/static/fonts/RocheSans-SemiBold.ttf') format('truetype');}
+@font-face{font-family:'Roche Sans';font-weight:700;font-style:normal;font-display:swap;
+  src:url('/static/fonts/RocheSans-Bold.woff2') format('woff2'),url('/static/fonts/RocheSans-Bold.ttf') format('truetype');}
+
+:root{
+  --blue:#0B41CD; --blue-h:#0834A4; --blue-light:#EDF1FE; --blue-mid:rgba(11,65,205,.10);
+  --bg:#F4F6FB; --surface:#FFFFFF; --surface-2:#EEF2F8; --inset:#F6F8FC;
+  --border:#E6EBF3; --border-2:#D6DEEA;
+  --t1:#0E1726; --t2:#3A465B; --t3:#6A7691; --t4:#9AA5BC;
+  --green:#16A34A; --green-l:#E9FBF0; --red:#E2433B; --red-l:#FDF0EF; --amber:#E08600;
+  --s-sm:0 1px 2px rgba(16,24,40,.05);
+  --s-lg:0 8px 28px rgba(16,24,40,.10),0 2px 8px rgba(16,24,40,.05);
+  --r:12px; --r-lg:16px; --r-xl:20px; --r-f:9999px; --hdr:58px;
+  --font:'Roche Sans','Hanken Grotesk','Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  --tx:.2s cubic-bezier(.4,0,.2,1);
+}
+[data-theme="dark"]{
+  --blue:#6E8DF7; --blue-h:#8FA8FA; --blue-light:rgba(110,141,247,.13); --blue-mid:rgba(110,141,247,.18);
+  --bg:#070B18; --surface:#0F1626; --surface-2:#18223A; --inset:#0C1220;
+  --border:rgba(255,255,255,.07); --border-2:rgba(255,255,255,.13);
+  --t1:#EEF2F9; --t2:#C3CDDD; --t3:#8C9AB4; --t4:#5C6B86;
+  --green:#34D399; --green-l:rgba(52,211,153,.14); --red:#F87171; --red-l:rgba(248,113,113,.14); --amber:#F5A623;
+  --s-sm:0 1px 3px rgba(0,0,0,.35); --s-lg:0 14px 40px rgba(0,0,0,.55);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--font);color:var(--t1);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased;min-height:100vh;background:var(--bg);transition:background .3s,color .3s}
+button{cursor:pointer;font-family:var(--font);border:none;background:none;color:inherit}
+input{font-family:var(--font)}
+::-webkit-scrollbar{width:7px;height:7px}
+::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:99px}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+.hdr{position:sticky;top:0;z-index:200;height:var(--hdr);background:color-mix(in srgb, var(--surface) 80%, transparent);backdrop-filter:blur(20px) saturate(1.6);-webkit-backdrop-filter:blur(20px) saturate(1.6);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 22px;gap:11px}
+.hdr-logo{display:flex;align-items:center;gap:10px;text-decoration:none;flex-shrink:0}
+.roche-wordmark{display:block;color:var(--blue);height:30px;width:auto}
+.hdr-name{font-size:14px;font-weight:600;color:var(--t1);letter-spacing:-.3px}
+.hdr-name em{color:var(--blue);font-style:normal}
+.hdr-sep{width:1px;height:22px;background:var(--border);flex-shrink:0}
+.hdr-title{font-size:13.5px;font-weight:600;color:var(--t2);white-space:nowrap}
+.hdr-space{flex:1}
+.hdr-btn{width:34px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:var(--r);color:var(--t3);transition:all var(--tx);position:relative;text-decoration:none}
+.hdr-btn:hover{background:var(--surface-2);color:var(--t1)}
+.btn-back{display:flex;align-items:center;gap:6px;padding:7px 13px;background:var(--surface);border:1px solid var(--border-2);border-radius:var(--r);font-size:13px;font-weight:500;color:var(--t2);text-decoration:none;transition:all var(--tx)}
+.btn-back:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-light)}
+
+.wrap{max-width:840px;margin:0 auto;padding:30px 24px 80px}
+.pagehead{margin-bottom:14px}
+.pagehead h1{font-size:26px;font-weight:800;letter-spacing:-.7px;line-height:1.1}
+.pagehead h1 em{color:var(--blue);font-style:normal}
+.pagehead p{font-size:13.5px;color:var(--t3);margin-top:6px}
+.applies{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--t2);background:var(--blue-light);border:1px solid var(--blue-mid);border-radius:var(--r);padding:11px 14px;margin-bottom:24px}
+.applies svg{width:16px;height:16px;color:var(--blue);flex:none}
+
+.group{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);padding:6px 22px;box-shadow:var(--s-sm);margin-bottom:18px}
+.group-head{display:flex;align-items:center;gap:11px;padding:18px 0 16px;border-bottom:1px solid var(--border)}
+.group-ico{width:34px;height:34px;flex:none;display:flex;align-items:center;justify-content:center;border-radius:10px;background:var(--blue-light);color:var(--blue)}
+.group-ico svg{width:18px;height:18px}
+.group-head h2{font-size:15px;font-weight:700;letter-spacing:-.2px}
+.group-head p{font-size:12.5px;color:var(--t4);margin-top:2px}
+
+.row{display:grid;grid-template-columns:1fr minmax(220px,300px);gap:22px;align-items:center;padding:18px 0;border-bottom:1px solid var(--border)}
+.row:last-child{border-bottom:none}
+.row-info{min-width:0}
+.row-label{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:600;color:var(--t1)}
+.tag{font-size:9.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;padding:2px 7px;border-radius:var(--r-f);background:var(--green-l);color:var(--green)}
+.tag.restart{background:var(--surface-2);color:var(--t4)}
+.row-help{font-size:12.5px;color:var(--t3);margin-top:5px;line-height:1.5}
+.row-control{display:flex;align-items:center;justify-content:flex-end;gap:14px}
+
+/* range */
+.range{display:flex;align-items:center;gap:14px;width:100%}
+.range input[type=range]{flex:1;height:5px;border-radius:99px;accent-color:var(--blue);background:var(--surface-2);cursor:pointer}
+.set-val{min-width:74px;text-align:right;font-size:13.5px;font-weight:700;color:var(--blue);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* segmented (enum) */
+.seg{display:flex;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-f);padding:3px;width:100%}
+.seg button{flex:1;color:var(--t3);font:600 12px var(--font);padding:7px 12px;border-radius:var(--r-f);transition:all var(--tx);text-transform:capitalize}
+.seg button:hover{color:var(--t1)}
+.seg button.on{background:var(--surface);color:var(--blue);box-shadow:var(--s-sm)}
+
+/* toggle */
+.toggle{position:relative;display:inline-block;width:46px;height:26px;flex:none}
+.toggle input{opacity:0;width:0;height:0}
+.toggle .slider{position:absolute;inset:0;background:var(--border-2);border-radius:99px;transition:background var(--tx)}
+.toggle .slider::before{content:"";position:absolute;height:20px;width:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform var(--tx);box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.toggle input:checked + .slider{background:var(--blue)}
+.toggle input:checked + .slider::before{transform:translateX(20px)}
+
+/* text */
+.set-text{width:100%;background:var(--surface);border:1px solid var(--border-2);border-radius:var(--r);color:var(--t1);font:600 13px var(--font);padding:9px 12px;transition:all var(--tx)}
+.set-text:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-mid)}
+
+.statusline{margin-top:24px;display:flex;justify-content:center;align-items:center;gap:8px;color:var(--t4);font-size:11.5px;text-align:center}
+.statusline svg{width:13px;height:13px;flex:none}
+.skel{height:120px;border-radius:var(--r-xl);background:linear-gradient(90deg,var(--surface-2),var(--inset),var(--surface-2));background-size:200% 100%;animation:sk 1.3s infinite;margin-bottom:18px}
+@keyframes sk{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+/* toast */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--t1);color:var(--bg);font-size:13px;font-weight:600;padding:11px 20px;border-radius:var(--r-f);box-shadow:var(--s-lg);opacity:0;pointer-events:none;transition:all var(--tx);display:flex;align-items:center;gap:9px;z-index:500}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.err{background:var(--red)}
+.toast svg{width:15px;height:15px}
+
+.lockout{max-width:430px;margin:16vh auto;text-align:center;border:1px solid var(--border);border-radius:var(--r-xl);padding:44px 36px;background:var(--surface);box-shadow:var(--s-lg)}
+.lockout .lk-ico{width:56px;height:56px;margin:0 auto 18px;display:flex;align-items:center;justify-content:center;border-radius:16px;background:var(--blue-light);color:var(--blue)}
+.lockout h1{font-size:21px;font-weight:800;letter-spacing:-.4px;margin-bottom:10px}
+.lockout p{color:var(--t3);font-size:13.5px;margin-bottom:24px}
+.lk-btn{display:inline-block;background:var(--blue);color:#fff;border-radius:var(--r);font:600 13px var(--font);padding:10px 20px;text-decoration:none}
+@media(max-width:620px){.row{grid-template-columns:1fr;gap:14px}.row-control{justify-content:flex-start}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header class="hdr" role="banner">
+  <a href="/" class="hdr-logo" aria-label="Roche Fritz">
+    <svg class="roche-wordmark" viewBox="0 0 122 64" fill="none" aria-hidden="true">
+      <polygon points="14,3 108,3 119,32 108,61 14,61 3,32" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/>
+      <text x="61" y="42" text-anchor="middle" font-size="27" font-weight="700" letter-spacing=".5" fill="currentColor" font-family="'Roche Sans','Hanken Grotesk',Inter,sans-serif">Roche</text>
+    </svg>
+    <span class="hdr-name"><em>Fritz</em></span>
+  </a>
+  <div class="hdr-sep" aria-hidden="true"></div>
+  <span class="hdr-title">Settings</span>
+  <div class="hdr-space"></div>
+  <button class="hdr-btn" id="darkToggleBtn" title="Toggle dark mode" aria-label="Toggle theme" onclick="toggleDark()">
+    <svg id="iconSun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+    <svg id="iconMoon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+  </button>
+  <a class="btn-back" href="/" aria-label="Back to assistant">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+    Assistant
+  </a>
+</header>
+
+<div class="wrap" id="app">
+  <div class="pagehead">
+    <h1>Assistant <em>settings</em></h1>
+    <p>Tune how Fritz retrieves, answers, and gauges its own confidence.</p>
+  </div>
+  <div class="applies">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+    <span>Changes save automatically and persist across restarts. <b>Live</b> settings take effect on the next question; <b>On restart</b> ones apply when the server restarts.</span>
+  </div>
+  <div id="groups">
+    <div class="skel"></div><div class="skel"></div>
+  </div>
+  <div class="statusline">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+    <span>Defaults are calibrated against the lab-ops corpus. Retune if the document set changes substantially.</span>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
+
+const GROUP_ICONS = {
+  confidence: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+  retrieval:  '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
+  llm:        '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/>',
+  demo:       '<path d="M9 2v6l-5 9a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3l-5-9V2"/><path d="M8 2h8"/>',
+};
+
+/* ── theme ─────────────────────────────────────────────────────── */
+function applyDark(on){
+  document.documentElement.dataset.theme = on ? "dark" : "light";
+  localStorage.setItem("roche_dark", on ? "1" : "0");
+  $("iconSun").style.display = on ? "block" : "none";
+  $("iconMoon").style.display = on ? "none" : "block";
+}
+function toggleDark(){ applyDark(document.documentElement.dataset.theme !== "dark"); }
+
+/* ── auth lockout ──────────────────────────────────────────────── */
+function lockout(){
+  document.body.innerHTML = `
+    <div class="lockout">
+      <div class="lk-ico"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+      <h1>Access required</h1>
+      <p>This surface is restricted to administrators.<br>Your session may have expired.</p>
+      <a class="lk-btn" href="/">Return to assistant</a>
+    </div>`;
+}
+
+/* ── toast ─────────────────────────────────────────────────────── */
+let toastTimer = null;
+function toast(text, kind){
+  const t = $("toast");
+  t.className = "toast show" + (kind === "err" ? " err" : "");
+  const ico = kind === "err"
+    ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
+    : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+  t.innerHTML = ico + "<span>" + text + "</span>";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+/* ── helpers ───────────────────────────────────────────────────── */
+function decimals(step){ const s = String(step ?? ""); const i = s.indexOf("."); return i < 0 ? 0 : s.length - i - 1; }
+function fmtVal(p, v){
+  if (p.type === "float") return Number(v).toFixed(decimals(p.step)) + (p.unit ? " " + p.unit : "");
+  if (p.type === "int")   return Number(v).toLocaleString() + (p.unit ? " " + p.unit : "");
+  return String(v);
+}
+
+async function save(key, value, cb){
+  try{
+    const r = await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ values: { [key]: value } }),
+    });
+    if (r.status === 401 || r.status === 404) return lockout();
+    if (!r.ok) throw new Error("http " + r.status);
+    const data = await r.json();
+    if (cb) cb(findParam(data, key));   // reflect the canonical (clamped) value
+    toast("Saved");
+  } catch(e){ toast("Couldn’t save — try again", "err"); }
+}
+function findParam(data, key){
+  for (const g of data.groups) for (const p of g.params) if (p.key === key) return p;
+  return null;
+}
+
+/* ── control builders ──────────────────────────────────────────── */
+function buildRange(p){
+  const wrap = el("div", "range");
+  const input = el("input");
+  input.type = "range"; input.min = p.min; input.max = p.max; input.step = p.step || 1; input.value = p.value;
+  input.setAttribute("aria-label", p.label);
+  const out = el("span", "set-val"); out.textContent = fmtVal(p, p.value);
+  input.addEventListener("input", () => out.textContent = fmtVal(p, input.value));
+  input.addEventListener("change", () => {
+    const v = p.type === "int" ? parseInt(input.value, 10) : parseFloat(input.value);
+    save(p.key, v, np => { if (np){ input.value = np.value; out.textContent = fmtVal(p, np.value); } });
+  });
+  wrap.append(input, out);
+  return wrap;
+}
+function buildEnum(p){
+  const seg = el("div", "seg");
+  p.choices.forEach(choice => {
+    const b = el("button"); b.type = "button"; b.textContent = choice;
+    if (choice === p.value) b.classList.add("on");
+    b.addEventListener("click", () => {
+      seg.querySelectorAll("button").forEach(x => x.classList.remove("on"));
+      b.classList.add("on");
+      save(p.key, choice);
+    });
+    seg.append(b);
+  });
+  return seg;
+}
+function buildBool(p){
+  const lab = el("label", "toggle");
+  const cb = el("input"); cb.type = "checkbox"; cb.checked = !!p.value;
+  cb.setAttribute("aria-label", p.label);
+  const sl = el("span", "slider");
+  cb.addEventListener("change", () => save(p.key, cb.checked));
+  lab.append(cb, sl);
+  return lab;
+}
+function buildText(p){
+  const input = el("input", "set-text"); input.type = "text"; input.value = p.value || "";
+  input.setAttribute("aria-label", p.label);
+  let last = p.value || "";
+  const commit = () => {
+    const v = input.value.trim();
+    if (v && v !== last){ last = v; save(p.key, v); }
+    else input.value = last;
+  };
+  input.addEventListener("change", commit);
+  input.addEventListener("keydown", e => { if (e.key === "Enter"){ e.preventDefault(); input.blur(); } });
+  return input;
+}
+function controlFor(p){
+  if (p.type === "enum")   return buildEnum(p);
+  if (p.type === "bool")   return buildBool(p);
+  if (p.type === "string") return buildText(p);
+  return buildRange(p);
+}
+
+/* ── render ────────────────────────────────────────────────────── */
+function render(data){
+  const host = $("groups");
+  host.innerHTML = "";
+  for (const g of data.groups){
+    const card = el("div", "group");
+    const head = el("div", "group-head");
+    head.innerHTML = `<span class="group-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${GROUP_ICONS[g.id] || ""}</svg></span>
+      <div><h2>${g.title}</h2><p>${g.description}</p></div>`;
+    card.append(head);
+    for (const p of g.params){
+      const row = el("div", "row");
+      const info = el("div", "row-info");
+      const tag = p.live ? '<span class="tag">Live</span>' : '<span class="tag restart">On restart</span>';
+      info.innerHTML = `<div class="row-label">${p.label}${tag}</div><div class="row-help">${p.help}</div>`;
+      const ctl = el("div", "row-control");
+      ctl.append(controlFor(p));
+      row.append(info, ctl);
+      card.append(row);
+    }
+    host.append(card);
+  }
+}
+
+async function load(){
+  try{
+    const r = await fetch("/api/settings");
+    if (r.status === 401 || r.status === 404) return lockout();
+    if (!r.ok) throw new Error("http " + r.status);
+    render(await r.json());
+  } catch(e){
+    $("groups").innerHTML = `<div class="statusline">Couldn’t load settings. <a href="/settings">Retry</a></div>`;
+  }
+}
+
+/* ── boot ──────────────────────────────────────────────────────── */
+applyDark(localStorage.getItem("roche_dark") === "1");
+load();
+</script>
+</body>
+</html>
