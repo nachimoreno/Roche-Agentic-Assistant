@@ -145,17 +145,19 @@ textarea{font-family:var(--font)}
 .c-sentiment{grid-column:span 4}
 .c-langs{grid-column:span 4}
 .c-emotions{grid-column:span 12}
-.c-hotspots{grid-column:span 7}
+.c-hotspots{grid-column:span 12}
 
-/* section header bars + thematic grouping via CSS order (no DOM reorder) */
-.sec{grid-column:1 / -1;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:16px 2px 0;padding-bottom:9px;border-bottom:1px solid var(--border)}
+/* section header bars — numbered zones; thematic grouping via CSS order (no DOM reorder) */
+.sec{grid-column:1 / -1;display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:56px 2px 4px;padding-bottom:13px;border-bottom:2px solid var(--border-2);position:relative}
+.sec::after{content:"";position:absolute;left:0;bottom:-2px;width:64px;height:3px;background:var(--blue);border-radius:3px}
 .sec:first-of-type{margin-top:0}
-.sec-t{font-size:12.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--t1)}
-.sec-d{font-size:12px;color:var(--t4)}
+.sec-n{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;flex:none;border-radius:9px;background:var(--blue);color:#fff;font-size:12.5px;font-weight:800;font-variant-numeric:tabular-nums;box-shadow:0 3px 10px var(--blue-mid)}
+.sec-t{font-size:15px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--t1)}
+.sec-d{font-size:12.5px;color:var(--t3)}
 .sec-1{order:0} .kpi{order:1}
 .sec-2{order:10} .c-trend{order:11} .c-adoption{order:12} .c-quality{order:13} .c-source{order:14}
 .sec-3{order:20} .c-ratings{order:21} .c-sentiment{order:22} .c-langs{order:23} .c-emotions{order:24}
-.sec-4{order:30} .c-hotspots{order:31} .c-topq{order:32} .c-gaps{order:33} .c-onboarding{order:34}
+.sec-4{order:30} .c-hotspots{order:31} .c-topq{order:32} .c-gaps{order:33} .c-conflicts{order:34} .c-onboarding{order:35}
 .chartbox{position:relative;height:264px}
 .chartbox.sm{height:236px}
 .donut-wrap{position:relative;height:236px;display:flex;align-items:center;justify-content:center}
@@ -191,10 +193,13 @@ textarea{font-family:var(--font)}
 /* languages */
 .lang-foot{margin-top:14px;font-size:11.5px;color:var(--t4);line-height:1.5}
 
-/* most-asked questions */
-.c-topq{grid-column:span 5}
+/* most-asked questions — full-width card, list in two columns */
+.c-topq{grid-column:span 12}
+#tqList{display:grid;grid-template-columns:1fr 1fr;column-gap:34px}
+#tqList .empty{grid-column:1 / -1}
 .tq-row{display:grid;grid-template-columns:1fr 96px;gap:16px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}
-.tq-row:last-child{border-bottom:0}
+.tq-row>div{min-width:0}  /* let the 1fr track shrink so .tq-q can ellipsize instead of pushing .tq-val off the card */
+.tq-row:nth-last-child(-n+2){border-bottom:0}  /* clear the rule under the last row of each of the two columns */
 .tq-q{font-size:13px;color:var(--t1);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tq-bar{height:8px;background:var(--surface-2);border-radius:99px;overflow:hidden;margin-top:7px}
 .tq-bar i{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--blue-h),var(--blue));transition:width 1s cubic-bezier(.2,.7,.2,1)}
@@ -264,6 +269,7 @@ textarea{font-family:var(--font)}
 }
 @media(max-width:620px){
   .kpi,.c-ratings,.c-sentiment,.c-emotions,.c-adoption,.c-source,.c-langs,.c-topq{grid-column:span 12}
+  #tqList{grid-template-columns:1fr} .tq-row:nth-last-child(2){border-bottom:1px solid var(--border)}
   .wrap{padding:18px 14px 48px}.hdr{padding:0 14px}.hdr-name,.hdr-title{display:none}
   .pagehead{align-items:flex-start}
 }
@@ -314,10 +320,10 @@ textarea{font-family:var(--font)}
 
   <div class="grid">
     <!-- Section headers — placed via CSS `order` to group the cards into blocks -->
-    <div class="sec sec-1"><span class="sec-t">Overview</span><span class="sec-d">Volume, helpfulness and the current hotspot</span></div>
-    <div class="sec sec-2"><span class="sec-t">Activity over time</span><span class="sec-d">How usage and feedback evolve day to day</span></div>
-    <div class="sec sec-3"><span class="sec-t">Satisfaction &amp; sentiment</span><span class="sec-d">How scientists rate and feel about answers</span></div>
-    <div class="sec sec-4"><span class="sec-t">Where answers fall short</span><span class="sec-d">Hotspots, top questions, gaps and onboarding</span></div>
+    <div class="sec sec-1"><span class="sec-n">01</span><span class="sec-t">At a glance</span><span class="sec-d">The headline numbers — volume, helpfulness and where it hurts</span></div>
+    <div class="sec sec-2"><span class="sec-n">02</span><span class="sec-t">Engagement &amp; adoption</span><span class="sec-d">Is Fritz being used? Volume, growth, cadence and how feedback arrives</span></div>
+    <div class="sec sec-3"><span class="sec-n">03</span><span class="sec-t">Satisfaction &amp; sentiment</span><span class="sec-d">How scientists rate and feel — and the languages they're served in</span></div>
+    <div class="sec sec-4"><span class="sec-n">04</span><span class="sec-t">What to fix</span><span class="sec-d">The doc-owner worklist — prioritised by demand and pain</span></div>
 
     <!-- KPI ROW -->
     <section class="card kpi" style="--accent:var(--blue)">
@@ -657,9 +663,11 @@ function renderHotspots(rows){
     $("kHotMeta").textContent = `weight ${top.weight.toFixed(1)} · ${top.feedback_count} item${top.feedback_count===1?"":"s"}`;
   } else { $("kHotProc").textContent = "—"; $("kHotMeta").textContent = "no negative signal yet"; }
 
-  if (!rows.length){ $("hsBox").innerHTML = `<div class="empty">No negative signal in this range</div>`; return; }
+  if (!rows.length){ $("hsBox").style.height = ""; $("hsBox").innerHTML = `<div class="empty">No negative signal in this range</div>`; return; }
   if (!$("hotspotChart")){ $("hsBox").innerHTML = `<canvas id="hotspotChart"></canvas>`; }
   const r = rows.slice(0,8);
+  // Size the plot to the bar count so a few hotspots don't leave half the box empty.
+  $("hsBox").style.height = Math.max(96, r.length * 36 + 12) + "px";
   const blue = cssVar("--blue");
   const trim = k => k.length>26 ? k.slice(0,25)+"…" : k;
   swap("hotspotChart", {
